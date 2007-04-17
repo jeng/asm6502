@@ -40,7 +40,7 @@ typedef enum  {
   True = 1
 } Bool;
 
-typedef Bool (*CharTest) (char c);
+typedef Bool (*CharTest) (char);
 
 typedef struct {
   char name[3];
@@ -71,19 +71,10 @@ typedef struct {
 } LabelList;
 
 typedef struct {
-  Bool valid;
-  char *command;
-  char *label;
-  char *param;
-} parsedLine;
-    
-typedef struct {
   char *label;
   char *command;
   char *parameter;
 } AsmLine;
-
-typedef void (*NextToken) (AsmLine *asmline, machine_6502 *machine);
 
 typedef struct {
   Bool codeCompiledOK;
@@ -103,8 +94,10 @@ typedef struct {
   int screen[32][32];
   int codeLen;
   char *source;
+  unsigned int sourceLen;
 } machine_6502;
 
+typedef void (*NextToken) (AsmLine *, machine_6502 *);
 
 void assignOpCodes(Opcodes *opcodes){
 
@@ -255,12 +248,12 @@ void getToken(const char *source, unsigned int *index, unsigned int sourceLength
       (*index)++;
     }
   }
-  if (source[*index] == '\n'){
+  if (source[*index] == '\n' || source[*index] == '\0'){
     token[i] = '\n';
     (*index)++;
   }
   else{ 
-    while (source[*index] != '\n' && ! isWhite(source[*index])){
+    while (source[*index] != '\n' && ! isWhite(source[*index]) && source[*index] != '\0'){
       if (i < tokenLength){
 	token[i++] = source[(*index)++];
       }
@@ -277,14 +270,8 @@ void initToken(char *token, unsigned int sourceLength){
     token[i++] = '\0';
 }
 
-/* stoupper() - Destructivley modifies the string making all letters upper case*/
-void stoupper(char *s){
-  int i = 0;
-  assert(s != NULL);
-  while(s[i] != '\0'){
-    s[i] = toupper(s[i]);
-    i++;
-  }
+Bool isBlank(const char *token){
+  return (token[0] == '\0');
 }
 
 Bool isLabel(const char *token){
@@ -296,9 +283,9 @@ Bool isCommand(const char *token, machine_6502 *machine){
   int i = 0;
 
   while (i < NUM_OPCODES)
-    if (strcmp(machine->opcodes[i],token) == 0) return True;
+    if (strcmp(machine->opcodes[i++].name,token) == 0) return True;
     
-  if (strcmp("DCB",token) == 0) return True;
+  if (strcmp(token, "DCB") == 0) return True;
   return False;
 }
 
@@ -336,12 +323,14 @@ void tokenize(const char *source, unsigned int sourceLength,
 
     if (token[0] == '\n') {
       /* blank line */
-      if (label[0] == '\0' && command[0] == '\0' && parameter[0] == '\0') 
+      if (isBlank(label) && 
+	  isBlank(command) && 
+	  isBlank(parameter)) 
 	continue;
       asmline.label = label;
       asmline.command = command;
       asmline.parameter = parameter;
-      nextToken(&asmline);
+      nextToken(&asmline,machine);
       initToken(label, size);
       initToken(command, size);
       initToken(parameter, size);
@@ -382,23 +371,25 @@ char *fileToBuffer(char *filename, unsigned int *returnSize){
     if (i == size){
       size += defaultSize;
       buffer = realloc(buffer, size);
-      if (buffer == NULL) 
+      if (buffer == NULL) {
+	fclose(ifp);
 	eprintf("Could not resize buffer.");
+      }
     }
   }
   fclose(ifp);
   *returnSize = i;
-  buffer[*returnSize] = '\0';
   buffer = realloc(buffer, *returnSize);
   if (buffer == NULL) 
     eprintf("Could not resize buffer.");
+  buffer[*returnSize-1] = '\0';
   return buffer;
 }
  
  
 
 /**
- ** Lable Routines
+ ** Label Routines
  */
 
 /* freeLabels() - Release all of the memory used by the label list. */
@@ -512,7 +503,7 @@ void reset(machine_6502 *machine){
 /* compileLine() - Compile one line of code. Returns
    true if it compile successfully. */
 
-Bool compileLine(machine_6502 *machine,char *s, int lineno){
+void compileLine(AsmLine *asmline, machine_6502 *machine){
   /*  char *input = removeComment(s);
   char *tmp = trim(input);
   int thisPC;
@@ -534,60 +525,41 @@ Bool compileLine(machine_6502 *machine,char *s, int lineno){
 */
 
   machine->regPC = 0;
-  return True;
 }
 
 /* indexLabels() - Pushes all labels onto the list */
-void indexLabels(AsmLine *asmLine, machine_6502 *machine){
+void indexLabels(AsmLine *asmline, machine_6502 *machine){
   int thisPC = machine->regPC;
   /* Figure out how many bytes this instruction takes */
   machine->codeLen = 0;
-  compileLine(asmLine, machine);
+  compileLine(asmline, machine);
   machine->regPC += machine->codeLen;
-  if (! isBlank(asm->label))
-    fprintf(stderr,"label %s at %x\n",asmLine->label,thisPC);
-    result = pushLabel(machine->labelIndex,asmLine->label,thisPC);
+  if (! isBlank(asmline->label)) {
+    fprintf(stderr,"label %s at %x\n",asmline->label,thisPC); /* XXX: Debug */
+    if ( !pushLabel(machine->labelIndex,asmline->label,thisPC) )
+      eprintf("Label already exists %s", asmline->label);
+
   }
 }
 
 /* compileCode() - Compile the current assembly code for the machine */
 Bool compileCode(machine_6502 *machine){
-  int lc = 1; /* line count */
+
   /* XXX: need to make sure the reset doesn't clear source code */
   reset(machine);
   machine->codeCompiledOK = True;
   machine->regPC = 0x600;
 
   /* First pass collect labels and index them */
-  tokenize(machine->source, machine->sourceLen, indexLabels);
-  /* Second pass translate the instructions */
-
-  while(lines != NULL){
-    if(!indexLabels(machine,lines->line)){
-      fprintf(stderr,"Label already defined at line %d\n",lc);
-      return False;
-    }
-    lc++;
-    lines = lines->next;
-  }
-
+  tokenize(machine->source, machine->sourceLen, indexLabels, machine);
   {
     int labC = labelCount(machine->labelIndex);
     printf("Found %d label%s\n", labC, (labC > 1)? "s": "");
   }
+  fprintf(stdout,"Compiling code...\n");
 
-  printf("Compiling code...\n");
-  
-  lines = lnls->head;
-  lc = 1;
-  while(lines != NULL){
-    if(!compileLine(machine,lines->line,lc)){
-      machine->codeCompiledOK = False;
-      break;
-    }
-    lines = lines->next;
-    lc++;
-  }
+  /* Second pass translate the instructions */
+  tokenize(machine->source, machine->sourceLen, compileLine, machine);
   
   if (machine->codeLen == 0){
     machine->codeCompiledOK = False;
@@ -608,17 +580,20 @@ machine_6502 *build6502(){
   machine = emalloc(sizeof(machine_6502));
   machine->labelIndex = emalloc(sizeof(LabelList));
   machine->labelIndex->head = NULL;
+  machine->source = NULL;
+  machine->sourceLen = 0;
   assignOpCodes(machine->opcodes);
   reset(machine);
-  return machine_6502;
+  return machine;
 }
 
 void destroy6502(machine_6502 *machine){
-  freeLines(machine->lines);
-  free(machine->lines);
-  machine->lines = NULL;
   free(machine->labelIndex);
   machine->labelIndex = NULL;
+  if(machine->source != NULL){
+    free(machine->source);
+    machine->source = NULL;
+  }
   free(machine);
   machine = NULL;
 }
@@ -635,16 +610,15 @@ void dumpLabelList(LabelList *labelList){
 }
 
 int main(int argc, char **argv){
-  char *fileBuffer;
-  unsigned int fileBufferSize;
-  machine_6502 machine = build6502;
+  machine_6502 *machine = build6502();
 
   if (argc == 1)
     eprintf("usage: assembler filename");
   else
-    fileBuffer = fileToBuffer(argv[1], &fileBufferSize);
-  
-  
+    machine->source = fileToBuffer(argv[1], &(machine->sourceLen));
+
+   fprintf(stderr,"source length: %d\n%s",machine->sourceLen, machine->source); /* XXX: debug */
+    
   compileCode(machine);
   {
     Bool b = pushLabel(machine->labelIndex,"funkyChicken", 0xff);
@@ -672,6 +646,5 @@ int main(int argc, char **argv){
   freeLabels(machine->labelIndex);
   dumpLabelList(machine->labelIndex);
   destroy6502(machine);
-  free(fileBuffer);
   return 0;
 }
