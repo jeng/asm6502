@@ -27,6 +27,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 #include "memwatch.h"
 
 enum {
@@ -500,32 +501,145 @@ void reset(machine_6502 *machine){
   freeLabels(machine->labelIndex);
 }
 
+void updateDisplayPixel( int addr ){
+}
+
+void pushByte(machine_6502 *machine, int value ) {
+  machine->memory[0x600 + machine->codeLen] = value & 0xff;
+  machine->codeLen++;
+}
+
+/*
+ * pushWord() - Push a word using pushByte twice
+ *
+ */
+
+void pushWord(machine_6502 *machine, int value ) {
+  pushByte(machine, value & 0xff );
+  pushByte(machine, (value>>8) & 0xff );
+}
+
+/*
+ * popByte( machine_6502 *machine,) - Pops a byte
+ *
+ */
+
+int popByte( machine_6502 *machine) {
+  int value = machine->memory[machine->regPC];
+  machine->regPC++;
+  return value;
+}
+
+/*
+ * popWord() - Pops a word using popByte() twice
+ *
+ */
+
+int popWord(machine_6502 *machine) {
+  return popByte(machine) + (popByte(machine) << 8);
+}
+
+/*
+ * memStoreByte() - Poke a byte, don't touch any registers
+ *
+ */
+
+void memStoreByte( machine_6502 *machine, int addr, int value ) {
+  machine->memory[ addr ] = (value & 0xff);
+  if( (addr >= 0x200) && (addr<=0x5ff) )
+    updateDisplayPixel( addr );
+}
+
+/*
+ * memStoreByte() - Peek a byte, don't touch any registers
+ *
+ */
+
+int memReadByte( machine_6502 *machine, int addr ) {
+  if( addr == 0xfe ) return floor( rand()%255 );/*XXX: use random from other library*/
+  return machine->memory[addr];
+}
+
+Bool dcb(machine_6502 *machine, const char *param){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkSingle(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkImmediate(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkZeroPage(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkZeroPageX(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkZeroPageY(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkAbsoluteX(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkAbsoluteY(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkIndirectX(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkIndirectY(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkAbsolute(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+Bool checkBranch(machine_6502 *machine, const char *param, int opcode){
+ /*XXX: fill it in*/
+  return True;
+}
+
 /* compileLine() - Compile one line of code. Returns
    true if it compile successfully. */
-
 void compileLine(AsmLine *asmline, machine_6502 *machine){
-  /*  char *input = removeComment(s);
-  char *tmp = trim(input);
-  int thisPC;
-  Bool result;
-  free(input);
-  input = tmp;
+  if (isBlank(asmline->command)) return;
 
-  \* Find command or label *\
-  int pos = -1;
-  if ((pos = charPos(input,iscolon)) >= 0){
-    int ln = pos + 1;
-    char *label = emalloc(ln * sizeof(char));
-    strncpy(label,input,ln);
-    label[ln-1] = '\0';
-    fprintf(stderr,"label %s at %x\n",label,thisPC);
-    result = pushLabel(machine->labelIndex,label,thisPC);
-    free(label);
+  if (strcmp("DCB",asmline->command) == 0)
+    dcb(machine,asmline->parameter);
+  else{
+    int i;
+    char *command = asmline->command;
+    char *param = asmline->parameter;
+
+    for(i = 0; i < NUM_OPCODES; i++){
+      if (strcmp(machine->opcodes[i].name, command) == 0){
+	if( checkSingle(    machine, param, machine->opcodes[i].SNGL) ) return;
+	if( checkImmediate( machine, param, machine->opcodes[i].Imm ) ) return;
+	if( checkZeroPage(  machine, param, machine->opcodes[i].ZP  ) ) return;
+	if( checkZeroPageX( machine, param, machine->opcodes[i].ZPX ) ) return;
+	if( checkZeroPageY( machine, param, machine->opcodes[i].ZPY ) ) return;
+	if( checkAbsoluteX( machine, param, machine->opcodes[i].ABSX) ) return;
+	if( checkAbsoluteY( machine, param, machine->opcodes[i].ABSY) ) return;
+	if( checkIndirectX( machine, param, machine->opcodes[i].INDX) ) return;
+	if( checkIndirectY( machine, param, machine->opcodes[i].INDY) ) return;
+	if( checkAbsolute(  machine, param, machine->opcodes[i].ABS ) ) return;
+	if( checkBranch(    machine, param, machine->opcodes[i].BRA ) ) return;
+      }
+    }
+    eprintf("Invalid Command %s",command);
   }
-*/
-
-  machine->regPC = 0;
 }
+
 
 /* indexLabels() - Pushes all labels onto the list */
 void indexLabels(AsmLine *asmline, machine_6502 *machine){
