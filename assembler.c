@@ -102,6 +102,7 @@ typedef struct {
   Opcodes opcodes[NUM_OPCODES];
   int screen[32][32];
   int codeLen;
+  char *source;
 } machine_6502;
 
 
@@ -508,67 +509,6 @@ void reset(machine_6502 *machine){
   freeLabels(machine->labelIndex);
 }
 
-/* addLine() - Add a line to the end of a list */
-void addLine(LineList *lines, char *line){
-  if (lines->head == NULL){
-    lines->list = emalloc(sizeof(Line));
-    lines->head = lines->list;
-  } 
-  else {
-    Line *new = emalloc(sizeof(Line));
-    lines->list->next = new;
-    lines->list = new;
-  }
-  lines->list->line = estrdup(line);
-  lines->list->next = NULL;
-}
-
-/* freeLines() - Release all of the memory used by the source code. */
-void freeLines(LineList *lines){
-  Line *ls = lines->head;
-  while (ls != NULL) {
-    Line *tmp = ls;
-    ls = ls->next;
-    free(tmp->line);
-    free(tmp);
-  }
-  lines->list = NULL;
-  lines->head = NULL;
-}
-
-/* dumpSourceCode() - Dump the current source code stored for this machine. */
-void dumpSourceCode(machine_6502 *machine){
-  Line *ls = machine->lines->head;
-  int count = 1;
-  while (ls != NULL) {
-    printf("%5d: %s\n",count++,ls->line);
-    ls = ls->next;
-  }
-}
-
-/* getLines() - Get all of the lines from a file */
-void getLines(LineList *lines, char *filename){
-  #define MAX_LINE_LEN 1024
-  FILE *ifp;
-  int c, li = 0;
-  char line[MAX_LINE_LEN];
-  ifp = fopen(filename, "rb");
-  if (ifp == NULL)
-    eprintf("Could not open file.");
-  while((c = getc(ifp)) != EOF){
-    if (li >= MAX_LINE_LEN)
-      eprintf("Line exceeds 1024 characters.");
-    else if (c == '\n'){
-      line[li] = '\0';
-      li = 0;
-      addLine(lines,line);
-    }
-    else if (c != '\r')
-      line[li++] = c;
-  }
-  fclose(ifp);
-}
-
 /* compileLine() - Compile one line of code. Returns
    true if it compile successfully. */
 
@@ -598,37 +538,20 @@ Bool compileLine(machine_6502 *machine,char *s, int lineno){
 }
 
 /* indexLabels() - Pushes all labels onto the list */
-Bool indexLabels(machine_6502 *machine, char *s){
+void indexLabels(AsmLine *asmLine, machine_6502 *machine){
   int thisPC = machine->regPC;
-  Bool result = True;
-  char *input = removeComment(s);
-  char *tmp = trim(input);
-
-  free(input);
-  input = tmp;
-  fprintf(stderr,"indexLabels: %s\n",s); /* XXX */
   /* Figure out how many bytes this instruction takes */
   machine->codeLen = 0;
-  compileLine(machine,input,0);
+  compileLine(asmLine, machine);
   machine->regPC += machine->codeLen;
-
-  /* Find command or label */
-  int pos = -1;
-  if ((pos = charPos(input,iscolon)) >= 0){
-    input[pos] = '\0';
-    char *label = estrdup(input);
-    fprintf(stderr,"label %s at %x\n",label,thisPC);
-    result = pushLabel(machine->labelIndex,label,thisPC);
-    free(label);
+  if (! isBlank(asm->label))
+    fprintf(stderr,"label %s at %x\n",asmLine->label,thisPC);
+    result = pushLabel(machine->labelIndex,asmLine->label,thisPC);
   }
-  free(input);
-  return result;
 }
 
 /* compileCode() - Compile the current assembly code for the machine */
 Bool compileCode(machine_6502 *machine){
-  LineList *lnls = machine->lines;
-  Line *lines = lnls->head;
   int lc = 1; /* line count */
   /* XXX: need to make sure the reset doesn't clear source code */
   reset(machine);
@@ -636,6 +559,7 @@ Bool compileCode(machine_6502 *machine){
   machine->regPC = 0x600;
 
   /* First pass collect labels and index them */
+  tokenize(machine->source, machine->sourceLen, indexLabels);
   /* Second pass translate the instructions */
 
   while(lines != NULL){
@@ -679,6 +603,26 @@ Bool compileCode(machine_6502 *machine){
   return True;
 }
 
+machine_6502 *build6502(){
+  machine_6502 *machine;
+  machine = emalloc(sizeof(machine_6502));
+  machine->labelIndex = emalloc(sizeof(LabelList));
+  machine->labelIndex->head = NULL;
+  assignOpCodes(machine->opcodes);
+  reset(machine);
+  return machine_6502;
+}
+
+void destroy6502(machine_6502 *machine){
+  freeLines(machine->lines);
+  free(machine->lines);
+  machine->lines = NULL;
+  free(machine->labelIndex);
+  machine->labelIndex = NULL;
+  free(machine);
+  machine = NULL;
+}
+
 
 /* TEST CODE */
 void dumpLabelList(LabelList *labelList){
@@ -690,21 +634,17 @@ void dumpLabelList(LabelList *labelList){
   }
 }
 
-
 int main(int argc, char **argv){
-  machine_6502 *machine;
-  machine = emalloc(sizeof(machine_6502));
-  machine->labelIndex = emalloc(sizeof(LabelList));
-  machine->labelIndex->head = NULL;
-  machine->lines = emalloc(sizeof(LineList));
-  machine->lines->head = NULL;
-  reset(machine);
-  assignOpCodes(machine->opcodes);
+  char *fileBuffer;
+  unsigned int fileBufferSize;
+  machine_6502 machine = build6502;
+
   if (argc == 1)
     eprintf("usage: assembler filename");
   else
-    getLines(machine->lines,argv[1]);
-  dumpSourceCode(machine);
+    fileBuffer = fileToBuffer(argv[1], &fileBufferSize);
+  
+  
   compileCode(machine);
   {
     Bool b = pushLabel(machine->labelIndex,"funkyChicken", 0xff);
@@ -720,24 +660,8 @@ int main(int argc, char **argv){
   setLabelPC(machine->labelIndex, "monkey", 0x06);
   printf("monkey's address %d\n", getLabelPC(machine->labelIndex,"monkey"));
   {
-    Bool b =   pushLabel(machine->labelIndex,"monkey", 0xfa);
+    Bool b = pushLabel(machine->labelIndex,"monkey", 0xfa);
     assert(b == False);
-  }
-  {
-    char *s = "        this is a test            ";
-    char *s2 = trimRight(s);
-    char *s3 = trimLeft(s);
-    char *s4 = trim(s);
-    printf("******%s******\n",s2);
-    printf("******%s******\n",s3);
-    printf("******%s******\n",s4);
-    free(s2); free(s3); free(s4);
-  }
-  {
-    char *s = "cmp $0xAA  ;foo bar";
-    char *s2 = removeComment(s);
-    printf("%s\n%s\n",s,s2);
-    free(s2);
   }
   /*  eprintf("Yuck"); */
   dumpLabelList(machine->labelIndex);
@@ -747,9 +671,7 @@ int main(int argc, char **argv){
   dumpLabelList(machine->labelIndex);
   freeLabels(machine->labelIndex);
   dumpLabelList(machine->labelIndex);
-  freeLines(machine->lines);
-  free(machine->lines);
-  free(machine->labelIndex);
-  free(machine);
+  destroy6502(machine);
+  free(fileBuffer);
   return 0;
 }
