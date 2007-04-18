@@ -542,7 +542,7 @@ function checkIndirectX( param, opcode ) {
 
 function checkIndirectY( param, opcode ) {
   if( opcode == 0x00 ) return false;
-  if( param.match( /^\(\$[0-9a-f]{1,2}\),Y$/i ) ) {
+  if( param.match( /^\(\$[0-9a-f]{1,2}\),Y$/i ) ) { /* I think this is a bug. IndirectX doesn't work like this - jhe*/
     pushByte( opcode );
     value = param.replace( new RegExp( /^\([\$]([0-9a-f]{1,2}).*$/i ), "$1" );
     if( value < 0 || value > 255 ) return false;

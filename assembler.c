@@ -28,12 +28,14 @@
 #include <assert.h>
 #include <ctype.h>
 #include <math.h>
+#include <stdint.h>
 #include "memwatch.h"
 
 enum {
   MAX_MEM = 1023,
   MAX_LINE_LENGTH = 256,
-  NUM_OPCODES = 56
+  NUM_OPCODES = 56,
+  MEM_64K = 77056
 };
 
 typedef enum  {
@@ -41,26 +43,34 @@ typedef enum  {
   True = 1
 } Bool;
 
+typedef enum{
+  LABEL, DIRECTION, HILO, VALUE
+} ParamType;
+
 typedef Bool (*CharTest) (char);
+
+typedef uint8_t  Bit8;
+typedef uint16_t Bit16;
+typedef uint32_t Bit32;
 
 typedef struct {
   char name[3];
-  int Imm;
-  int ZP;
-  int ZPX;
-  int ZPY;
-  int ABS;
-  int ABSX;
-  int ABSY;
-  int INDX;
-  int INDY;
-  int SNGL;
-  int BRA;
+  Bit8 Imm;
+  Bit8 ZP;
+  Bit8 ZPX;
+  Bit8 ZPY;
+  Bit8 ABS;
+  Bit8 ABSX;
+  Bit8 ABSY;
+  Bit8 INDX;
+  Bit8 INDY;
+  Bit8 SNGL;
+  Bit8 BRA;
 } Opcodes;
 
 struct _Label {
   char *name;
-  int addr;
+  Bit32 addr;
   struct _Label *next;
 };
 
@@ -78,14 +88,22 @@ typedef struct {
 } AsmLine;
 
 typedef struct {
+  char  direction;
+  char  hilo;
+  Bit32 value;
+  char label[MAX_LINE_LENGTH];
+  ParamType type;
+} ParamStruct;
+
+typedef struct {
   Bool codeCompiledOK;
-  int regA;
-  int regX;
-  int regY;
-  int regP;
-  int regPC;
-  int regSP;
-  int memory[0x600];
+  Bit8 regA;
+  Bit8 regX;
+  Bit8 regY;
+  Bit8 regP;
+  Bit16 regPC; /* A pair of 8 bit registers */
+  Bit8 regSP;
+  Bit8 memory[MEM_64K];
   Bool runForever;
   LabelList *labelIndex;
   int labelPtr;
@@ -265,7 +283,8 @@ void getToken(const char *source, unsigned int *index, unsigned int sourceLength
   }
 }
 
-void initToken(char *token, unsigned int sourceLength){
+/* nullify() - fills a string with upto sourceLength null characters. */
+void nullify(char *token, unsigned int sourceLength){
   unsigned int i = 0;
   while (i < sourceLength)
     token[i++] = '\0';
@@ -312,13 +331,13 @@ void tokenize(const char *source, unsigned int sourceLength,
   char command[size];
   char parameter[size];
 
-  initToken(label, size);
-  initToken(command, size);
-  initToken(parameter, size);
+  nullify(label, size);
+  nullify(command, size);
+  nullify(parameter, size);
 
   i = 0;
   while(i < sourceLength){
-    initToken(token, size);
+    nullify(token, size);
     getToken(source, &i, sourceLength, token, size);
     stoupper(token);
 
@@ -332,9 +351,9 @@ void tokenize(const char *source, unsigned int sourceLength,
       asmline.command = command;
       asmline.parameter = parameter;
       nextToken(&asmline,machine);
-      initToken(label, size);
-      initToken(command, size);
-      initToken(parameter, size);
+      nullify(label, size);
+      nullify(command, size);
+      nullify(parameter, size);
     }
     else if (isLabel(token))
       strncpy(label,token,size);
@@ -493,8 +512,8 @@ void reset(machine_6502 *machine){
   machine->regX = 0;
   machine->regY = 0;
   machine->regP = 0x20;
-  machine->regPC = 0x600;
-  machine->regSP = 0x100;
+  machine->regPC = 0x600; 
+  machine->regSP = 0xff; /* was 100, of by one? */
   machine->runForever = False;
   machine->labelPtr = 0;
   machine->codeRunning = False;
@@ -504,7 +523,15 @@ void reset(machine_6502 *machine){
 void updateDisplayPixel( int addr ){
 }
 
-void pushByte(machine_6502 *machine, int value ) {
+void checkAddress(Bit32 address){
+  /* XXX: Do we want to kill the program here? */
+  if (address >= MEM_64K)
+    eprintf("Address %d is beyond 64k", address);
+}
+
+void pushByte(machine_6502 *machine, Bit32 value ) {
+  Bit32 address = 0x600 + machine->codeLen;
+  checkAddress(address);
   machine->memory[0x600 + machine->codeLen] = value & 0xff;
   machine->codeLen++;
 }
@@ -514,7 +541,7 @@ void pushByte(machine_6502 *machine, int value ) {
  *
  */
 
-void pushWord(machine_6502 *machine, int value ) {
+void pushWord(machine_6502 *machine, Bit8 value ) {
   pushByte(machine, value & 0xff );
   pushByte(machine, (value>>8) & 0xff );
 }
@@ -524,8 +551,8 @@ void pushWord(machine_6502 *machine, int value ) {
  *
  */
 
-int popByte( machine_6502 *machine) {
-  int value = machine->memory[machine->regPC];
+Bit8 popByte( machine_6502 *machine) {
+  Bit8 value = machine->memory[machine->regPC];
   machine->regPC++;
   return value;
 }
@@ -560,51 +587,241 @@ int memReadByte( machine_6502 *machine, int addr ) {
   return machine->memory[addr];
 }
 
+/* hexDump() - Dump the memory to stdout */
+void hexDump(machine_6502 *machine){
+  Bit32 address;
+  Bit32 i;
+  for( i = 0; i < machine->codeLen; i++){
+    address = 0x600 + i;
+    if ( (i&15) == 0 ) {
+      printf("\n%.4lx: ", address);
+    }
+    printf("%.2x ",machine->memory[address]);
+  }
+  printf("\n");
+}
+
+/* parseHex() - Converts HexString to a 32 bit integer.
+   Hexstring is expected to be of the for "$<digits>" or "#$<digits>"*/
+Bit32 parseHex(const char *hexstring){
+  char hex[MAX_LINE_LENGTH];
+  char s[MAX_LINE_LENGTH];
+  strncpy(s,hexstring,MAX_LINE_LENGTH);
+  if (isBlank(s) || strlen(s) < 2) return 0;
+  if (s[0] == '#' && s[1] == '$'){
+    s[0] = '0';
+    s[1] = 'x';
+    return strtol(s,NULL,16);
+  }
+  if (s[0] == '$'){ 	
+    s[0] = 'x';
+    hex[0] = '0';
+    strncat(hex,s,MAX_LINE_LENGTH);
+    return strtol(s,NULL,16);
+  }
+  return 0;
+}
+
+/* parseParam() - Parse the parameter. */
+Bool parseParam(char *param, ParamStruct ps){
+  const int SS = 10;
+  char stack[SS];
+  int sp = 1;
+  int pp = 0;
+  int vp = 0;
+  char value[MAX_LINE_LENGTH];
+  int i;
+  Bool hex = False;
+
+  #define PUSH(c){ sp++; sp >= SS ? return False : stack[sp] = c;  }
+  #define POP(){ sp < 0 ? return False : stack[sp--]; }
+  #define APPEND(c){ vp >= MAX_LINE_LENGTH ? return False : value[vp]; vp++}
+
+  nullify(stack, SS);
+  nullify(value, MAX_LINE_LENGTH);
+  stack[0] = '?';
+  
+  if (param[0] == '#' || param[0] == '(' || 
+      param[0] == '$')
+    PUSH(param[0]);
+  else if (isdigit(param[0]))
+    PUSH('0');
+  else if (isalpha(param[0]))
+    PUSH('A');
+  else if (param[0] == '\0')
+    return True;
+  else
+    return False;
+    
+
+  for (i = 0; i < MAX_LINE_LENGTH; i++){
+    char c = param[i];
+    if (c == '\0') break;
+    switch (stack[sp]) {
+    case '?': return False;
+    case '$':
+      hex = True;
+      if (('0' <= c && c <= '9') || 
+	  ('A' <= c && 'F' <= c)){
+	APPEND(c);
+      }
+      else if (c == ','){
+	POP();
+	PUSH(',');
+      }
+      else
+	return False;
+      break;
+    case '#': 
+      if (c == '$'){
+	POP();
+	PUSH('$');
+      }
+      else if (c == '<' || c == '>'){
+	ps.type = HILO;
+	POP();
+	PUSH('A');
+      }
+      else if (isdigit(c)){
+	APPEND(c);
+      }
+      break;
+    case '(':break;
+    case 'A':break;
+    case '0':break;
+    case ',':break;
+      if (c == 'X') || c == 'Y')
+			 ps.direction = c
+			   else
+			     return False;
+      break;
+						    
+	
+	       
+
 Bool dcb(machine_6502 *machine, const char *param){
+  int i = 0, j = 0;
+  char value[MAX_LINE_LENGTH];
+
+  if (isBlank(param)) 
+    return False;
+
+  nullify(value, MAX_LINE_LENGTH);
+  while(i < MAX_LINE_LENGTH){
+    if (param[i] == ',' || param[i] == '\0'){
+      char c = value[0];
+      if (c == '$'){
+	pushByte(machine, parseHex(value));
+	nullify(value, MAX_LINE_LENGTH);
+	j = 0;
+      } 
+      else if (isdigit(c)) {
+	pushByte(machine, atoi(value));
+	nullify(value, MAX_LINE_LENGTH);
+	j = 0;
+      }
+      else
+	return False;
+      
+      if (param[i] == '\0') 
+	break;
+      i++;
+    } 
+    else {
+      value[j++] = param[i++];
+    }
+  }	
+  return True;
+}
+
+/* checkSingle() - Single-byte opcodes */
+Bool checkSingle(machine_6502 *machine, const char *param, Bit8 opcode){
+  if ( ! opcode ) return False;
+  if ( ! isBlank(param)) return False;
+  pushByte(machine, opcode);
+  return True;
+}
+
+
+Bool checkImmediate(machine_6502 *machine, const char *param, Bit8 opcode){
+  if ( ! opcode ) return False;
+  if (param[0] == '#' && param[1] == '$'){
+    Bit32 value = parseHex(param);
+    pushByte(machine, opcode);
+    if (value > 0xff ) 
+      return False;
+    pushByte(machine, value);
+    return True;
+  }
+  if (param[0] == '#' && isdigit(param[1])){
+    char *base10[MAX_LINE_LENGTH];
+    Bit32 value;
+    strncpy(base10,param);
+    base10[0] = 0;
+    value = atoi(base10);
+    if (value > 0xff ) 
+      return False;
+    pushByte(machine, value);
+    return True;
+  }
+  // Label lo/hi
+  if (param[0] == "#" && (param[1] == '<' || param[1] == '>')){
+    
+    
+  return False;
+}
+
+/* checkZeroPage() - Check if param is ZP and push value */
+Bool checkZeroPage(machine_6502 *machine, const char *param, Bit8 opcode){
+  if ( ! opcode ) return False;
+  if (param[0] == '$') {
+    Bit32 value = parseHex(param);
+    pushByte(machine, opcode);
+    if (value > 0xff ) 
+      return False;
+    pushByte(machine, value);
+    return True;
+  }
+  if (isdigit(param[0])){
+    Bit32 value = atoi(param);
+    pushByte( opcode );
+    if (value > 0xff)
+      return False;
+    pushByte(value);
+    return True;
+  }
+
+  return False;
+}
+Bool checkZeroPageX(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
-Bool checkSingle(machine_6502 *machine, const char *param, int opcode){
+Bool checkZeroPageY(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
-Bool checkImmediate(machine_6502 *machine, const char *param, int opcode){
+Bool checkAbsoluteX(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
-Bool checkZeroPage(machine_6502 *machine, const char *param, int opcode){
+Bool checkAbsoluteY(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
-Bool checkZeroPageX(machine_6502 *machine, const char *param, int opcode){
+Bool checkIndirectX(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
-Bool checkZeroPageY(machine_6502 *machine, const char *param, int opcode){
+Bool checkIndirectY(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
-Bool checkAbsoluteX(machine_6502 *machine, const char *param, int opcode){
+Bool checkAbsolute(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
-Bool checkAbsoluteY(machine_6502 *machine, const char *param, int opcode){
- /*XXX: fill it in*/
-  return True;
-}
-Bool checkIndirectX(machine_6502 *machine, const char *param, int opcode){
- /*XXX: fill it in*/
-  return True;
-}
-Bool checkIndirectY(machine_6502 *machine, const char *param, int opcode){
- /*XXX: fill it in*/
-  return True;
-}
-Bool checkAbsolute(machine_6502 *machine, const char *param, int opcode){
- /*XXX: fill it in*/
-  return True;
-}
-Bool checkBranch(machine_6502 *machine, const char *param, int opcode){
+Bool checkBranch(machine_6502 *machine, const char *param, Bit8 opcode){
  /*XXX: fill it in*/
   return True;
 }
@@ -718,13 +935,15 @@ void dumpLabelList(LabelList *labelList){
   Label *ls = labelList->head;
   printf("ADDR  | NAME\n");
   while(ls != NULL){
-    printf("%.5d | %s\n",ls->addr, ls->name);
+    printf("%.5ld | %s\n",ls->addr, ls->name);
     ls = ls->next;
   }
 }
 
 int main(int argc, char **argv){
   machine_6502 *machine = build6502();
+
+  printf("Bit8 = %d, Bit16 = %d, Bit32 = %d\n", sizeof(Bit8), sizeof(Bit16), sizeof(Bit32));
 
   if (argc == 1)
     eprintf("usage: assembler filename");
@@ -734,6 +953,7 @@ int main(int argc, char **argv){
    fprintf(stderr,"source length: %d\n%s",machine->sourceLen, machine->source); /* XXX: debug */
     
   compileCode(machine);
+  hexDump(machine);
   {
     Bool b = pushLabel(machine->labelIndex,"funkyChicken", 0xff);
     assert( b == True);
