@@ -599,7 +599,7 @@ void hexDump(machine_6502 *machine){
     }
     printf("%.2x%s",machine->memory[address], (i & 1) ? " ":"");
   }
-  printf("\n");
+  if ( i&1 ) printf("-- [END]\n");
 }
 
 /* parseHex() - Converts HexString to a 32 bit integer.
