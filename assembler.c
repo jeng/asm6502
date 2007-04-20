@@ -607,6 +607,8 @@ void hexDump(machine_6502 *machine){
 Bit32 parseHex(const char *hexstring){
   char hex[MAX_LINE_LENGTH];
   char s[MAX_LINE_LENGTH];
+  nullify(hex,MAX_LINE_LENGTH);
+  nullify(s,MAX_LINE_LENGTH);
   strncpy(s,hexstring,MAX_LINE_LENGTH);
   if (isBlank(s) || strlen(s) < 2) return 0;
   if (s[0] == '#' && s[1] == '$'){
@@ -618,7 +620,7 @@ Bit32 parseHex(const char *hexstring){
     s[0] = 'x';
     hex[0] = '0';
     strncat(hex,s,MAX_LINE_LENGTH);
-    return strtol(s,NULL,16);
+    return strtol(hex,NULL,16);
   }
   return 0;
 }
