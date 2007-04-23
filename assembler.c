@@ -37,9 +37,12 @@
 
 enum {
   MAX_MEM = 1023,
-  MAX_LINE_LENGTH = 256,
-  NUM_OPCODES = 56,
-  MEM_64K = 77056
+  MAX_LINE_LENGTH = 256, /* Your insane if you have even close to 256 characters in a single line */
+  MAX_LABEL_LEN = 80, 
+  NUM_OPCODES = 56, /* Number of unique instructions not counting DCB */
+  MEM_64K = 77056, /* We have 64k of memory to work with. */
+  MAX_PARAM_VALUE = 16, /* DCB can have up to 16 values behind the opcode */
+  MAX_CMD_LEN = 4 /* Each opcode is 3 characeters long and we a place for the null character */
 };
 
 typedef enum  {
@@ -48,7 +51,11 @@ typedef enum  {
 } Bool;
 
 typedef enum{
-  LABEL, DIRECTION, HILO, VALUE, BLANK, IMMEDIATE, INDIRECT
+  BLANK, IMMEDIATE_VALUE, IMMEDIATE_GREAT, 
+    IMMEDIATE_LESS, INDIRECT_X, INDIRECT_Y,
+    ZERO, ZERO_X, ZERO_Y,
+    ABS_VALUE, ABS_OR_BRANCH, ABS_X, ABS_Y,
+    ABS_LABEL_X, ABS_LABEL_Y, DCB_PARAM
 } ParamType;
 
 typedef Bool (*CharTest) (char);
@@ -86,18 +93,18 @@ typedef struct {
 } LabelList;
 
 typedef struct {
+  ParamType type;
+  Bit32 value[MAX_PARAM_VALUE];
+  unsigned int vp; /*value pointer, index into the value table.*/
   char *label;
-  char *command;
-  char *parameter;
-} AsmLine;
+} Param;
 
 typedef struct {
-  char  direction;
-  char  hilo;
-  Bit32 value;
-  char label[MAX_LINE_LENGTH];
-  ParamType type;
-} ParamStruct;
+  char *label;
+  char *command;
+  Param *param;
+} AsmLine;
+
 
 typedef struct {
   Bool codeCompiledOK;
@@ -211,38 +218,59 @@ void eprintf(char *fmt, ...){
   exit(2); /* conventional value for failed execution */
 }
 
-/* emalloc - Taken from "Practice of Programming" by Kernighan and Pike.
-   If have added memory initialization like calloc. If memory allocatiion
-   fails the program will print a message an exit. */
+/* emalloc - Taken from "Practice of Programming" by Kernighan and
+   Pike.  If memory allocatiion fails the program will print a message
+   an exit. */
 void *emalloc(size_t n) {
   void *p;
   
   p = malloc(n);
   if (p == NULL)
     eprintf("malloc of %u bytes failed:", n);
-  memset(p,'\0',n);
+  return p;
+}
+
+/* ecalloc - Dose the same thing as emalloc just calls calloc instead. */
+void *ecalloc(uint32_t nelm, size_t nsize){
+  void *p;
+ 
+  p = calloc(nelm, nsize);
+  if (p == NULL)
+    eprintf("calloc of %u bytes failed:", nelm * nsize);
   return p;
 }
 
 /* estrdup() - Allocates memory for a new string a returns a copy of the source sting in it. */
-char *estrdup(char *source){
+char *estrdup(const char *source){
   int ln = strlen(source) + 1;
-  char *s = emalloc(ln * sizeof(char));
+  char *s = ecalloc(ln, sizeof(char));
   strncpy(s,source,ln);
   return s;
 }
 
 
-/** 
- ** Tokenizer
+/* 
+ ** Assembly parser
  */
 
+Bool addvalue(Param *param,Bit32 value){
+  if (0 <= param->vp && param->vp <= MAX_PARAM_VALUE) {
+    param->value[param->vp++] = value;
+    return True;
+  }
+  else
+    return False;
+}
+
+void parseError(char *s){
+  fprintf(stderr,"6502 Syntax Error: %s\n", s);
+}
+
 /* stoupper() - Destructivley modifies the string making all letters upper case*/
-void stoupper(char *s){
+void stoupper(char **s){
   int i = 0;
-  assert(s != NULL);
-  while(s[i] != '\0'){
-    s[i] = toupper(s[i]);
+  while((*s)[i] != '\0'){
+    (*s)[i] = toupper((*s)[i]);
     i++;
   }
 }
@@ -251,7 +279,7 @@ Bool isWhite(char c){
   return (c == '\r' || c == '\t' || c == ' ');
 }
 
-void skipWhiteSpace(char **s){
+void skipSpace(char **s){
   for(; isWhite(**s); (*s)++)
     ;
 }
@@ -272,7 +300,7 @@ Bool isLabel(const char *token){
   return (token[idx] == ':');
 }
 
-Bool isCommand(const char *token, machine_6502 *machine){
+Bool isCommand(machine_6502 *machine, const char *token){
   int i = 0;
 
   while (i < NUM_OPCODES) {
@@ -297,6 +325,383 @@ Bool isParameter(const char *token){
   }
 }
 
+/* hasChar() - Check to see if the current line has a certain
+   charater */
+Bool hasChar(char *s, char c){
+  for(; *s != '\0' && *s != '\n'; s++) {
+    if (*s  == c)
+      return True;
+  }
+  return False;
+}
+
+Bool ishexdigit(char c){
+  if (isdigit(c))
+    return True;
+  else {
+    char c1 = toupper(c);
+    return ('A' <= c1 && c1 <= 'F');
+  }
+}
+
+/* command() - parse a command from the source code. We pass along a
+   machine so the opcode can be validated. */
+Bool command(machine_6502 *machine, char **s, char **cmd){
+  int i = 0;
+  skipSpace(s);
+  for(;isalpha(**s) && i < MAX_CMD_LEN; (*s)++)
+    (*cmd)[i++] = **s;
+  if (i == 0)
+    return True; /* Could be a blank line. */
+  else
+    return isCommand(machine,*cmd);
+}
+
+Bool declareLabel(char **s, char **label){
+  int i = 0;
+  skipSpace(s);
+  for(;**s != ':' && **s != '\n' && **s != '\0'; (*s)++){
+    if (isWhite(**s)) 
+      continue;
+    (*label)[i++] = **s;
+  }
+  if (i == 0)
+    return False; /* Current line has to have a label */
+  else if (**s == ':'){
+    (*s)++; /* Skip colon */
+    return True;
+  }
+  else
+    return False;
+}
+
+Bool parseHex(char **s, Bit32 *value){
+  enum { MAX_HEX_LEN = 5 };
+  if (**s == '$') {    
+    char *hex = ecalloc(MAX_HEX_LEN, sizeof(char));
+    int i = 0;
+
+    (*s)++; /* move pass $ */
+    for(; ishexdigit(**s) && i < MAX_HEX_LEN; (*s)++)
+      hex[i++] = **s;
+    
+    *value = strtol(hex,NULL,16);
+    free(hex);  
+    return True;
+  }
+  else
+    return False;
+}
+  
+Bool parseDec(char **s, Bit32 *value){
+  enum { MAX_DEC_LEN = 4 };
+  char *dec = ecalloc(MAX_DEC_LEN, sizeof(char));
+  int i;
+  for(i = 0; isdigit(**s) && i < MAX_DEC_LEN; (*s)++)
+    dec[i++] = **s;
+  
+  if (i > 0){
+    *value = atoi(dec);
+    free(dec);  
+    return True;
+  }
+  else
+    return False;
+}
+
+Bool parseValue(char **s, Bit32 *value){
+  if (**s == '$')
+    return parseHex(s, value);
+  else
+    return parseDec(s, value);
+}
+
+Bool paramLabel(char **s, char **label){
+  int i;
+  for(i = 0; isalnum(**s) && i < MAX_LABEL_LEN; (*s)++)
+    (*label)[i++] = **s;
+
+  if (i > 0)
+    return True;
+  else
+    return False;
+}
+
+Bool immediate(char **s, Param *param){
+  if (**s != '#') 
+    return False;
+
+  (*s)++; /*Move past hash */
+  if (**s == '<' || **s == '>'){    
+    char *label = ecalloc(MAX_LABEL_LEN, sizeof(char));
+    param->type = (**s == '<') ? IMMEDIATE_LESS : IMMEDIATE_GREAT;
+    (*s)++; /* move past < or > */
+    if (paramLabel(s, &label)){
+      int ln = strlen(label) + 1;
+      param->label = ecalloc(ln, sizeof(char));
+      strncpy(param->label, label, ln);
+      free(label);
+      return True;
+    }    
+    free(label);
+  }
+  else {
+    Bit32 value;
+    if (parseValue(s, &value)){
+      if (value > 0xFF){
+	parseError("Immediate value is too large.");
+	return False;
+      }
+      param->type = IMMEDIATE_VALUE;
+      return addvalue(param, value);
+    }
+  }
+  return False;
+}
+
+Bool isDirection(char c){
+  return (c == 'X' || c == 'Y');
+}
+
+Bool getDirection(char **s, char *direction){
+  skipSpace(s);
+  if (**s == ','){
+    (*s)++;
+    skipSpace(s);
+    if (isDirection(**s)){
+      *direction = **s;
+      (*s)++;
+      return True;
+    }
+  }
+  return False;
+}
+  
+Bool indirect(char **s, Param *param){
+  Bit32 value;
+  char c;
+  if (**s == '(') 
+    (*s)++;
+  else
+    return False;
+  
+  if (! parseHex(s,&value)) 
+    return False;
+  if (value > 0xFF) {
+    parseError("Indirect value is too large.");
+    return False;
+  }
+  if (!addvalue(param, value))
+    return False;
+  skipSpace(s);
+  if (**s == ')'){
+    (*s)++;
+    if (getDirection(s,&c)) {
+      if (c == 'Y'){
+	param->type = INDIRECT_Y;
+	return True;
+      }
+    }
+  }
+  else if (getDirection(s, &c)){
+    if (c == 'X'){
+      skipSpace(s);
+      if (**s == ')'){
+	(*s)++;
+	param->type = INDIRECT_X;
+	return True;
+      }
+    }
+  }
+  return False;
+}
+
+Bool dcbValue(char **s, Param *param){
+  Bit32 val;
+  if (! parseValue(s,&val))
+    return False;
+
+  if (val > 0xFF) 
+    return False;
+		    
+  if (!addvalue(param,val))
+    return False;
+
+  param->type = DCB_PARAM;
+
+  skipSpace(s);
+  if(**s == ','){
+    (*s)++;
+    return dcbValue(s, param);
+  }
+  else
+    return True;
+} 
+
+Bool value(char **s, Param *param){
+  Bit32 val;
+  Bool abs;
+  Bool dir;
+  char c = '\0';
+  if (! parseValue(s,&val))
+    return False;
+
+  abs = (val > 0xFF);
+  dir = getDirection(s,&c);
+  if (!addvalue(param,val))
+    return False;
+
+  if(abs && dir){
+    if (c == 'X')
+      param->type = ABS_X;
+    else if (c == 'Y')
+      param->type = ABS_Y;
+    else
+      return False;
+  }
+  else if (abs)
+    param->type = ABS_VALUE;
+  else if (dir){
+    if (c == 'X')
+      param->type = ZERO_X;
+    else if (c == 'Y')
+      param->type = ZERO_Y;
+    else
+      return False;
+  }
+  else
+    param->type = ZERO;
+
+  return True;
+}
+
+Bool label(char **s, Param *param){
+  char *label = ecalloc(MAX_LABEL_LEN, sizeof(char));
+  char c;
+  Bool labelOk = False;
+  if (paramLabel(s, &label)){
+    labelOk = True;
+    param->type = ABS_OR_BRANCH;
+    if (getDirection(s, &c)){
+      if (c == 'X')
+	param->type = ABS_LABEL_X;
+      else if (c == 'Y')
+	param->type = ABS_LABEL_Y;
+      else
+	labelOk = False;
+    }
+    param->label = estrdup(label);
+  }
+  free(label);
+  return labelOk;
+}
+
+Bool parameter(const char *cmd, char **s, Param *param){
+  skipSpace(s);
+  if (**s == '\0' || **s == '\n')
+    return True;
+  else if (**s == '#')
+    return immediate(s,param);
+  else if (**s == '(')
+    return indirect(s,param);
+  else if (**s == '$' || isdigit(**s)){
+    if (strcmp(cmd, "DCB") == 0)
+      return dcbValue(s,param);
+    else
+      return value(s,param);
+  }
+  else if (isalpha(**s))
+    return label(s ,param);
+  else
+    return False; /* Invalid Parameter */
+}
+
+void comment(char **s){
+  skipSpace(s);
+  if (**s == ';')
+    for(;**s != '\n' && **s != '\0'; (*s)++)
+      ;
+}
+
+void initParam(Param *param){
+  int i;
+  param->type = BLANK;
+  for(i = 0; i < MAX_PARAM_VALUE; i++)
+    param->value[i] = 0;
+  param->vp = 0;
+  param->label = NULL;
+}
+  
+
+Bool parseAssembly(machine_6502 *machine, const char *code){
+  char *s;
+  char *cmd = ecalloc(MAX_CMD_LEN, sizeof(char));
+  char *label = ecalloc(MAX_LABEL_LEN, sizeof(char));
+  char *start; /*pointer to the start of the code.*/
+  Bool codeOk = True;
+  unsigned int lc = 1;
+  Param param;
+
+  s = estrdup(code);
+  start = s;
+  stoupper(&s);
+
+  while(*s != '\0'){
+    initParam(&param);
+    nullify(cmd, MAX_CMD_LEN);
+    nullify(label, MAX_CMD_LEN);
+    skipSpace(&s);
+    comment(&s);
+    if (*s == '\n'){
+      lc++;
+      s++;
+      continue; /* blank line */
+    }
+    else if (*s == '\0')
+      continue; /* no newline at the end of the code */
+    else if (hasChar(s,':')){
+      if(! declareLabel(&s,&label)){
+	codeOk = False;
+	break;
+      }
+      skipSpace(&s);
+    }
+    if(!command(machine, &s, &cmd)){
+      codeOk = False;
+      break;
+    }
+    skipSpace(&s);
+    comment(&s);
+    if(!parameter(cmd, &s, &param)){
+      codeOk = False;
+      break;
+    }
+    skipSpace(&s);
+    comment(&s);
+    if (*s == '\n' || *s == '\0'){
+      int i;
+      /* add the assembly line to the list */
+      fprintf(stderr,"%9d\t%s %d ", lc, cmd, param.type);
+      for(i = 0; i < MAX_PARAM_VALUE; i++){
+	fprintf(stderr,"%s%lx,",(i==0)?"Val: ":" ",param.value[i]);
+      }
+      fprintf(stderr,"\n");
+    }
+    else {
+      codeOk = False;
+      break;
+    }
+  }
+  if (! codeOk)
+    fprintf(stderr,"Syntax error at line %u", lc);
+  free(start);
+  free(cmd);
+  free(label);
+  return codeOk;
+}
+    
+    
+
 /* fileToBuffer() - Allocates a buffer and loads all of the file into memory. */
 char *fileToBuffer(char *filename, unsigned int *returnSize){
   const int defaultSize = 1024;
@@ -304,7 +709,7 @@ char *fileToBuffer(char *filename, unsigned int *returnSize){
   int c;
   int size = defaultSize;
   int i = 0;
-  char *buffer = calloc(defaultSize,sizeof(char));
+  char *buffer = ecalloc(defaultSize,sizeof(char));
 
   if (buffer == NULL) 
     eprintf("Could not allocate memory for buffer.");
@@ -534,264 +939,272 @@ void hexDump(machine_6502 *machine){
 
 /* parseHex() - Converts HexString to a 32 bit integer.
    Hexstring is expected to be of the for "$<digits>" or "#$<digits>"*/
-Bit32 parseHex(const char *hexstring){
-  char hex[MAX_LINE_LENGTH];
-  char s[MAX_LINE_LENGTH];
-  nullify(hex,MAX_LINE_LENGTH);
-  nullify(s,MAX_LINE_LENGTH);
-  strncpy(s,hexstring,MAX_LINE_LENGTH);
-  if (isBlank(s) || strlen(s) < 2) return 0;
-  if (s[0] == '#' && s[1] == '$'){
-    s[0] = '0';
-    s[1] = 'x';
-    return strtol(s,NULL,16);
-  }
-  if (s[0] == '$'){ 	
-    s[0] = 'x';
-    hex[0] = '0';
-    strncat(hex,s,MAX_LINE_LENGTH);
-    return strtol(hex,NULL,16);
-  }
-  return 0;
-}
+/* XXX: Bull shit */
+/* Bit32 parseHex(const char *hexstring){ */
+/*   char hex[MAX_LINE_LENGTH]; */
+/*   char s[MAX_LINE_LENGTH]; */
+/*   nullify(hex,MAX_LINE_LENGTH); */
+/*   nullify(s,MAX_LINE_LENGTH); */
+/*   strncpy(s,hexstring,MAX_LINE_LENGTH); */
+/*   if (isBlank(s) || strlen(s) < 2) return 0; */
+/*   if (s[0] == '#' && s[1] == '$'){ */
+/*     s[0] = '0'; */
+/*     s[1] = 'x'; */
+/*     return strtol(s,NULL,16); */
+/*   } */
+/*   if (s[0] == '$'){ 	 */
+/*     s[0] = 'x'; */
+/*     hex[0] = '0'; */
+/*     strncat(hex,s,MAX_LINE_LENGTH); */
+/*     return strtol(hex,NULL,16); */
+/*   } */
+/*   return 0; */
+/* } */
+
 
 
 /* checkSingle() - Single-byte opcodes */
-Bool checkSingle(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == BLANK) {
-    pushByte(machine, opcode);
-    return True;
-  }
-  return False;
+Bool checkSingle(machine_6502 *machine, Param *ps, Bit8 opcode){
+ /*  if (!opcode) return False; */
+/*   if (ps->type == BLANK) { */
+/*     pushByte(machine, opcode); */
+/*     return True; */
+/*   } */
+  return False; 
 }
 
-Bool checkImmediate(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
+Bool checkImmediate(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
 
-  if (ps->type == IMMEDIATE){
-    if (ps->value <= 0xFF){
-      pushByte(machine, opcode);
-      pushByte(machine, ps->value);
-      return True;
-    }
-  }
-  else if (ps->type == HILO){
-    pushByte(machine, opcode);
-    if (findLabel(machine->labelIndex,ps->label)){
-      Bit32 addr = getLabelPC(machine->labelIndex,ps->label);
-      switch (ps->hilo){
-      case '>':
-	pushByte(machine, (addr >> 8) & 0xFF);
-	return True;
-      case '<':
-	pushByte(machine, addr & 0xFF);
-	return True;
-      default:
-	return False;
-      }
-    }
-    else {
-      pushByte(machine, 0x00); /* push a null byte on the first pass. */
-      return True;
-    }
-  }
+/*   if (ps->type == IMMEDIATE){ */
+/*     if (ps->value <= 0xFF){ */
+/*       pushByte(machine, opcode); */
+/*       pushByte(machine, ps->value); */
+/*       return True; */
+/*     } */
+/*   } */
+/*   else if (ps->type == HILO){ */
+/*     pushByte(machine, opcode); */
+/*     if (findLabel(machine->labelIndex,ps->label)){ */
+/*       Bit32 addr = getLabelPC(machine->labelIndex,ps->label); */
+/*       switch (ps->hilo){ */
+/*       case '>': */
+/* 	pushByte(machine, (addr >> 8) & 0xFF); */
+/* 	return True; */
+/*       case '<': */
+/* 	pushByte(machine, addr & 0xFF); */
+/* 	return True; */
+/*       default: */
+/* 	return False; */
+/*       } */
+/*     } */
+/*     else { */
+/*       pushByte(machine, 0x00); /\* push a null byte on the first pass. *\/ */
+/*       return True; */
+/*     } */
+/*   } */
   return False;
 }
 
 /* checkZeroPage() - Check if param is ZP and push value */
-Bool checkZeroPage(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == VALUE &&
-      ps->value <= 0xFF){
-    pushByte(machine, opcode);
-    pushByte(machine, ps->value);
-    return True;
-  }
+Bool checkZeroPage(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if (ps->type == VALUE && */
+/*       ps->value <= 0xFF){ */
+/*     pushByte(machine, opcode); */
+/*     pushByte(machine, ps->value); */
+/*     return True; */
+/*   } */
   return False;
 }
-Bool checkZeroPageX(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == DIRECTION && 
-      ps->direction == 'X' &&
-      ps->value <= 0xFF){
-    pushByte(machine,opcode);
-    pushByte(machine,ps->value);
-    return True;
-  }
+Bool checkZeroPageX(machine_6502 *machine, Param *ps, Bit8 opcode){ 
+/*   if (!opcode) return False; */
+/*   if (ps->type == DIRECTION &&  */
+/*       ps->direction == 'X' && */
+/*       ps->value <= 0xFF){ */
+/*     pushByte(machine,opcode); */
+/*     pushByte(machine,ps->value); */
+/*     return True; */
+/*   } */
   return False;
 }
-Bool checkZeroPageY(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == DIRECTION && 
-      ps->direction == 'Y' &&
-      ps->value <= 0xFF){
-    pushByte(machine,opcode);
-    pushByte(machine,ps->value);
-    return True;
-  }
-  return False;
-}
-
-Bool checkAbsolute(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == VALUE){
-    pushByte(machine, opcode);
-    if (ps->value <= 0xFFFF){
-      pushWord(machine, ps->value);
-      return True;
-    }
-  }
-  else if (ps->type == LABEL){
-    if (findLabel(machine->labelIndex,ps->label)){
-      Bit32 addr = getLabelPC(machine->labelIndex, ps->label);
-      pushByte(machine,opcode);
-      if (addr <= 0xFFFF) {
-	pushWord(machine, addr );
-	return True;
-      }
-    }
-    else {
-      pushByte(machine, opcode);
-      pushWord(machine, 0xDEAD); /* default for first pass */
-      return True;
-    }
-  }
+Bool checkZeroPageY(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if (ps->type == DIRECTION &&  */
+/*       ps->direction == 'Y' && */
+/*       ps->value <= 0xFF){ */
+/*     pushByte(machine,opcode); */
+/*     pushByte(machine,ps->value); */
+/*     return True; */
+/*   } */
   return False;
 }
 
-Bool checkAbsoluteX(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == DIRECTION && ps->direction == 'X'){
-    if (isBlank(ps->label)){
-      pushByte(machine,opcode);
-      if (ps->value <= 0xFFFF){
-	pushWord(machine,ps->value);
-	return True;
-      }
-    } 
-    else {
-      if (findLabel(machine->labelIndex, ps->label)){
-	Bit32 addr = getLabelPC(machine->labelIndex, ps->label);
-	pushByte(machine,opcode);
-	if (addr <= 0xFFFF){
-	  pushWord(machine, addr);
-	  return True;
-	}
-      }
-      else {
-	pushByte(machine, opcode);
-	pushWord(machine, 0xDEAD); /* default for first pass */
-	return True;
-      }
-    }
-  }      
+Bool checkAbsolute(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if (ps->type == VALUE){ */
+/*     pushByte(machine, opcode); */
+/*     if (ps->value <= 0xFFFF){ */
+/*       pushWord(machine, ps->value); */
+/*       return True; */
+/*     } */
+/*   } */
+/*   else if (ps->type == LABEL){ */
+/*     if (findLabel(machine->labelIndex,ps->label)){ */
+/*       Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
+/*       pushByte(machine,opcode); */
+/*       if (addr <= 0xFFFF) { */
+/* 	pushWord(machine, addr ); */
+/* 	return True; */
+/*       } */
+/*     } */
+/*     else { */
+/*       pushByte(machine, opcode); */
+/*       pushWord(machine, 0xDEAD); /\* default for first pass *\/ */
+/*       return True; */
+/*     } */
+/*   } */
   return False;
 }
 
-Bool checkAbsoluteY(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == DIRECTION && ps->direction == 'Y'){
-    if (isBlank(ps->label)){
-      pushByte(machine,opcode);
-      if (ps->value <= 0xFFFF){
-	pushWord(machine,ps->value);
-	return True;
-      }
-    } 
-    else {
-      if (findLabel(machine->labelIndex, ps->label)){
-	Bit32 addr = getLabelPC(machine->labelIndex, ps->label);
-	pushByte(machine,opcode);
-	if (addr <= 0xFFFF){
-	  pushWord(machine, addr);
-	  return True;
-	}
-      }
-      else {
-	pushByte(machine, opcode);
-	pushWord(machine, 0xDEAD); /* Default for first pass */
-	return True;
-      }
-    }
-  }      
+Bool checkAbsoluteX(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if (ps->type == DIRECTION && ps->direction == 'X'){ */
+/*     if (isBlank(ps->label)){ */
+/*       pushByte(machine,opcode); */
+/*       if (ps->value <= 0xFFFF){ */
+/* 	pushWord(machine,ps->value); */
+/* 	return True; */
+/*       } */
+/*     }  */
+/*     else { */
+/*       if (findLabel(machine->labelIndex, ps->label)){ */
+/* 	Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
+/* 	pushByte(machine,opcode); */
+/* 	if (addr <= 0xFFFF){ */
+/* 	  pushWord(machine, addr); */
+/* 	  return True; */
+/* 	} */
+/*       } */
+/*       else { */
+/* 	pushByte(machine, opcode); */
+/* 	pushWord(machine, 0xDEAD); /\* default for first pass *\/ */
+/* 	return True; */
+/*       } */
+/*     } */
+/*   }       */
   return False;
 }
 
-Bool checkIndirectX(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if(ps->type == INDIRECT && ps->direction == 'X'){
-    pushByte(machine, opcode);
-    if (ps->value <= 0xFF){
-      pushByte(machine, ps->value);
-      return True;
-    }
-  }
+Bool checkAbsoluteY(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if (ps->type == DIRECTION && ps->direction == 'Y'){ */
+/*     if (isBlank(ps->label)){ */
+/*       pushByte(machine,opcode); */
+/*       if (ps->value <= 0xFFFF){ */
+/* 	pushWord(machine,ps->value); */
+/* 	return True; */
+/*       } */
+/*     }  */
+/*     else { */
+/*       if (findLabel(machine->labelIndex, ps->label)){ */
+/* 	Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
+/* 	pushByte(machine,opcode); */
+/* 	if (addr <= 0xFFFF){ */
+/* 	  pushWord(machine, addr); */
+/* 	  return True; */
+/* 	} */
+/*       } */
+/*       else { */
+/* 	pushByte(machine, opcode); */
+/* 	pushWord(machine, 0xDEAD); /\* Default for first pass *\/ */
+/* 	return True; */
+/*       } */
+/*     } */
+/*   }       */
   return False;
 }
 
-Bool checkIndirectY(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if(ps->type == INDIRECT && ps->direction == 'Y'){
-    pushByte(machine, opcode);
-    if (ps->value <= 0xFF){
-      pushByte(machine, ps->value);
-      return True;
-    }
-  }
+Bool checkIndirectX(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if(ps->type == INDIRECT && ps->direction == 'X'){ */
+/*     pushByte(machine, opcode); */
+/*     if (ps->value <= 0xFF){ */
+/*       pushByte(machine, ps->value); */
+/*       return True; */
+/*     } */
+/*   } */
   return False;
 }
 
-Bool checkBranch(machine_6502 *machine, ParamStruct *ps, Bit8 opcode){
-  if (!opcode) return False;
-  if (ps->type == LABEL){
-    Bit32 addr = getLabelPC(machine->labelIndex, ps->label);
-    pushByte(machine, opcode);
-    if (addr < (machine->codeLen+0x600)) { /* Backwards? */
-      pushByte(machine, (0xff - (machine->codeLen - addr)) & 0xFF);
-    }
-    else
-      pushByte(machine, (addr-machine->codeLen-1) & 0xFF);
-    return True;
-  }
-  else {
-    pushByte(machine,opcode);
-    pushWord(machine,0);
-  }
+Bool checkIndirectY(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if(ps->type == INDIRECT && ps->direction == 'Y'){ */
+/*     pushByte(machine, opcode); */
+/*     if (ps->value <= 0xFF){ */
+/*       pushByte(machine, ps->value); */
+/*       return True; */
+/*     } */
+/*   } */
   return False;
+}
+
+Bool checkBranch(machine_6502 *machine, Param *ps, Bit8 opcode){
+/*   if (!opcode) return False; */
+/*   if (ps->type == LABEL){ */
+/*     Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
+/*     pushByte(machine, opcode); */
+/*     if (addr < (machine->codeLen+0x600)) { /\* Backwards? *\/ */
+/*       pushByte(machine, (0xff - (machine->codeLen - addr)) & 0xFF); */
+/*     } */
+/*     else */
+/*       pushByte(machine, (addr-machine->codeLen-1) & 0xFF); */
+/*     return True; */
+/*   } */
+/*   else { */
+/*     pushByte(machine,opcode); */
+/*     pushWord(machine,0); */
+/*   } */
+  return False;
+}
+
+/* XXX: blaa */
+Bool dcb(machine_6502 *machine, char *s){
+  return True;
 }
 
 /* compileLine() - Compile one line of code. Returns
    true if it compile successfully. */
 Bool compileLine(AsmLine *asmline, machine_6502 *machine){
-  if (isBlank(asmline->command)) return True;
+/*   if (isBlank(asmline->command)) return True; */
 
-  if (strcmp("DCB",asmline->command) == 0)
-    return dcb(machine,asmline->parameter);
-  else{
-    int i;
-    char *command = asmline->command;
-    ParamStruct param;
-    parseParam(asmline->parameter,&param);
-    fprintf(stderr,"value: %lx\n",param.value);/*XXX: Debug*/
-    for(i = 0; i < NUM_OPCODES; i++){
-      if (strcmp(machine->opcodes[i].name, command) == 0){
+/*   if (strcmp("DCB",asmline->command) == 0) */
+/*     return dcb(machine,""); /\* XXX: dcb *\/ */
+/*   else{ */
+/*     int i; */
+/*     char *command = asmline->command; */
+/*     Param param; */
+/*     parseParam(asmline->parameter,&param); */
+/*     fprintf(stderr,"value: %lx\n",param.value);/\*XXX: Debug*\/ */
+/*     for(i = 0; i < NUM_OPCODES; i++){ */
+/*       if (strcmp(machine->opcodes[i].name, command) == 0){ */
 
-	if( checkSingle(    machine, &param, machine->opcodes[i].SNGL) ) return True;
-	if( checkImmediate( machine, &param, machine->opcodes[i].Imm ) ) return True;
-	if( checkZeroPage(  machine, &param, machine->opcodes[i].ZP  ) ) return True;
-	if( checkZeroPageX( machine, &param, machine->opcodes[i].ZPX ) ) return True;
-	if( checkZeroPageY( machine, &param, machine->opcodes[i].ZPY ) ) return True;
-	if( checkAbsoluteX( machine, &param, machine->opcodes[i].ABSX) ) return True;
-	if( checkAbsoluteY( machine, &param, machine->opcodes[i].ABSY) ) return True;
-	if( checkIndirectX( machine, &param, machine->opcodes[i].INDX) ) return True;
-	if( checkIndirectY( machine, &param, machine->opcodes[i].INDY) ) return True;
-	if( checkAbsolute(  machine, &param, machine->opcodes[i].ABS ) ) return True;
-	if( checkBranch(    machine, &param, machine->opcodes[i].BRA ) ) return True;
-      }
-    }
-    return False; /* unknow upcode */
-  }
+/* 	if( checkSingle(    machine, &param, machine->opcodes[i].SNGL) ) return True; */
+/* 	if( checkImmediate( machine, &param, machine->opcodes[i].Imm ) ) return True; */
+/* 	if( checkZeroPage(  machine, &param, machine->opcodes[i].ZP  ) ) return True; */
+/* 	if( checkZeroPageX( machine, &param, machine->opcodes[i].ZPX ) ) return True; */
+/* 	if( checkZeroPageY( machine, &param, machine->opcodes[i].ZPY ) ) return True; */
+/* 	if( checkAbsoluteX( machine, &param, machine->opcodes[i].ABSX) ) return True; */
+/* 	if( checkAbsoluteY( machine, &param, machine->opcodes[i].ABSY) ) return True; */
+/* 	if( checkIndirectX( machine, &param, machine->opcodes[i].INDX) ) return True; */
+/* 	if( checkIndirectY( machine, &param, machine->opcodes[i].INDY) ) return True; */
+/* 	if( checkAbsolute(  machine, &param, machine->opcodes[i].ABS ) ) return True; */
+/* 	if( checkBranch(    machine, &param, machine->opcodes[i].BRA ) ) return True; */
+/*       } */
+/*     } */
+/*     return False; /\* unknow upcode *\/ */
+/*   } */
+  return True;
 }
 
 
@@ -816,31 +1229,31 @@ Bool indexLabels(AsmLine *asmline, machine_6502 *machine){
 /* compileCode() - Compile the current assembly code for the machine */
 Bool compileCode(machine_6502 *machine){
 
-  reset(machine);
-  machine->codeCompiledOK = True;
-  machine->regPC = 0x600;
+/*   reset(machine); */
+/*   machine->codeCompiledOK = True; */
+/*   machine->regPC = 0x600; */
 
-  /* First pass collect labels and index them */
-  tokenize(machine->source, machine->sourceLen, indexLabels, machine);
-  {
-    int labC = labelCount(machine->labelIndex);
-    /*    printf("Found %d label%s\n", labC, (labC > 1)? "s": ""); XXX*/
-  }
-  /* fprintf(stdout,"Compiling code...\n"); XXX*/
+/*   /\* First pass collect labels and index them *\/ */
+/*   tokenize(machine->source, machine->sourceLen, indexLabels, machine); */
+/*   { */
+/*     int labC = labelCount(machine->labelIndex); */
+/*     /\*    printf("Found %d label%s\n", labC, (labC > 1)? "s": ""); XXX*\/ */
+/*   } */
+/*   /\* fprintf(stdout,"Compiling code...\n"); XXX*\/ */
 
-  /* Second pass translate the instructions */
-  machine->codeLen = 0;
-  tokenize(machine->source, machine->sourceLen, compileLine, machine);
+/*   /\* Second pass translate the instructions *\/ */
+/*   machine->codeLen = 0; */
+/*   tokenize(machine->source, machine->sourceLen, compileLine, machine); */
   
-  if (machine->codeLen == 0){
-    machine->codeCompiledOK = False;
-    fprintf(stderr,"No Code to run.\n");
-  }
+/*   if (machine->codeLen == 0){ */
+/*     machine->codeCompiledOK = False; */
+/*     fprintf(stderr,"No Code to run.\n"); */
+/*   } */
 
-  if (machine->codeCompiledOK )
-    machine->memory[0x600+machine->codeLen] = 0x00;
-  else
-    return False;
+/*   if (machine->codeCompiledOK ) */
+/*     machine->memory[0x600+machine->codeLen] = 0x00; */
+/*   else */
+/*     return False; */
 
   /* printf("Code compiled successfully, %d bytes.\n", machine->codeLen); XXX */
   return True;
@@ -886,30 +1299,30 @@ void dumpOpcodes(machine_6502 *machine){
     printf("opcode: %s\n", machine->opcodes[i++].name);
 }
 
-void printPS(Bool b, ParamStruct *ps){
-  printf("Returned %s ", b ? "True" : "False");
-  printf("PS: %c, %c, %ld, %s, %d\n",
-	 ps->direction,
-	 ps->hilo,
-	 ps->value,
-	 ps->label,
-	 ps->type);
+void printPS(Bool b, Param *ps){
+/*   printf("Returned %s ", b ? "True" : "False"); */
+/*   printf("PS: %c, %c, %ld, %s, %d\n", */
+/* 	 ps->direction, */
+/* 	 ps->hilo, */
+/* 	 ps->value, */
+/* 	 ps->label, */
+/* 	 ps->type); */
 
 }
 
 int main(int argc, char **argv){
   machine_6502 *machine = build6502();
-  ParamStruct ps;
   Bool b;
+  char *code;
 
   /*printf("Bit8 = %d, Bit16 = %d, Bit32 = %d\n", sizeof(Bit8), sizeof(Bit16), sizeof(Bit32));*/
 
   if (argc == 1)
     eprintf("usage: assembler filename");
   else
-    machine->source = fileToBuffer(argv[1], &(machine->sourceLen));
-
-  fprintf(stderr,"source length: %d\n%s\n",machine->sourceLen, machine->source); /* XXX: debug */
+    code = fileToBuffer(argv[1], &(machine->sourceLen));
+  
+  parseAssembly(machine, code);
 
 /*   b = parseParam("#$0AF",&ps); */
 /*   printPS(b,&ps); */
@@ -939,8 +1352,8 @@ int main(int argc, char **argv){
 /*   printPS(b,&ps); */
 
 /*     dumpOpcodes(machine); */
-  compileCode(machine);
-  hexDump(machine);
+/*  compileCode(machine); */
+/*  hexDump(machine); */
 /*   { */
 /*     Bool b = pushLabel(machine->labelIndex,"funkyChicken", 0xff); */
 /*     assert( b == True); */
