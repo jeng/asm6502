@@ -12,15 +12,11 @@
  */ 
 
 /*
-
       This is a port of the javascript 6502 assembler, compiler and
       debugger. The orignal code was copyright 2006 by Stian Soreng -
       www.6502asm.com
 
-      It is a real mess right now. Don't prototype in C is an
-      important lesson. I jumped right in to coding and now I have to
-      clean things up.
-
+      I changed the structure of the assembler in this version.
 */
 
 #include <stdlib.h>
@@ -119,8 +115,6 @@ typedef struct {
   int codeLen;
 } machine_6502;
 
-typedef Bool (*NextToken) (AsmLine *, machine_6502 *);
-
 void assignOpCodes(Opcodes *opcodes){
 
 #define SETOP(num, _name, _Imm, _ZP, _ZPX, _ZPY, _ABS, _ABSX, _ABSY, _INDX, _INDY, _SNGL, _BRA) \
@@ -188,7 +182,6 @@ void assignOpCodes(Opcodes *opcodes){
   SETOP(54, "STY", 0x00, 0x84, 0x94, 0x00, 0x8c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
   SETOP(55, "---", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
 }
-
 
 /* eprintf - Taken from "Practice of Programming" by Kernighan and Pike */
 void eprintf(char *fmt, ...){
@@ -399,18 +392,6 @@ Bool isCommand(machine_6502 *machine, const char *token){
   
   if (strcmp(token, "DCB") == 0) return True;
   return False;
-}
-
-Bool isParameter(const char *token){
-  char first = token[0];
-  if (isalnum(first)) return True;
-  switch (first) {
-  case '\0': return True; /* Blank parameters are allowed */
-  case '#': return True;
-  case '$': return True;
-  case '(': return True;
-  default: return False;
-  }
 }
 
 /* hasChar() - Check to see if the current line has a certain
@@ -771,16 +752,9 @@ AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *code){
     skipSpace(&s);
     comment(&s);
     if (*s == '\n' || *s == '\0'){
-      int i;
       AsmLine *asm;
       asm = newAsmLine(cmd,label,decl,param,lc);
       listp = addend(listp,asm);
-      /* add the assembly line to the list */
-/*       fprintf(stderr,"%9d\t%s %d ", lc, cmd, param->type); */
-/*       for(i = 0; i < MAX_PARAM_VALUE; i++){ */
-/* 	fprintf(stderr,"%s%lx,",(i==0)?"Val: ":" ",param->value[i]); */
-/*       } */
-/*       fprintf(stderr,"\n"); */
     }
     else {
       *codeOk = False;
@@ -796,8 +770,6 @@ AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *code){
   return listp;
 }
     
-    
-
 /* fileToBuffer() - Allocates a buffer and loads all of the file into memory. */
 char *fileToBuffer(char *filename){
   const int defaultSize = 1024;
@@ -834,98 +806,13 @@ char *fileToBuffer(char *filename){
   buffer[i+1] = '\0';
   return buffer;
 }
- 
- 
-
-/**
- ** Label Routines
- */
-
-/* freeLabels() - Release all of the memory used by the label list. */
-/* void freeLabels(LabelList *labelList){ */
-/*   Label *ls = labelList->head; */
-/*   while (ls != NULL) { */
-/*     Label *tmp = ls; */
-/*     ls = ls->next; */
-/*     free(tmp->name); */
-/*     free(tmp); */
-/*   } */
-/*   labelList->list = NULL; */
-/*   labelList->head = NULL; */
-/* } */
-
-/* findLabel() - Returns true if the label exists. */
-/* Bool findLabel(LabelList *labelList, char *name){ */
-/*   Label *ls = labelList->head; */
-/*   while(ls != NULL){ */
-/*     if (strcmp(ls->name, name) == 0) */
-/*       return True; */
-/*     ls = ls->next; */
-/*   } */
-/*   return False; */
-/* } */
-
-/* pushLabel() - Push label onto the list. Return false if label already exists. */
-/* Bool pushLabel(LabelList *labelList, char *name, int addr){ */
-/*   if ( isBlank(name) || findLabel(labelList, name ) ) return False; */
-
-/*   if (labelList->head == NULL){ */
-/*     labelList->list = emalloc(sizeof(Label)); */
-/*     labelList->head = labelList->list; */
-/*   }  */
-/*   else { */
-/*     Label *new = emalloc(sizeof(Label)); */
-/*     labelList->list->next = new; */
-/*     labelList->list = new; */
-/*   } */
-/*   labelList->list->name = estrdup(name); */
-/*   labelList->list->name[strlen(name)-1] = '\0'; /\* overwrite the colon *\/ */
-/*   labelList->list->addr = addr; */
-/*   labelList->list->next = NULL; */
-/*   return True; */
-/* } */
-
-/* setLabelPC() - Associates label with address */
-/* Bool setLabelPC(LabelList *labelList, char *name, int addr) { */
-/*   Label *ls = labelList->head; */
-/*   while(ls != NULL){ */
-/*     if (strcmp(ls->name, name) == 0){ */
-/*       ls->addr = addr; */
-/*       return True; */
-/*     } */
-/*     ls = ls->next; */
-/*   } */
-/*   return False; */
-/* } */
-
-/* getLabelPC() - Get address associated with label */
-/* int getLabelPC(LabelList *labelList, char *name){ */
-/*   Label *ls = labelList->head; */
-/*   while(ls != NULL){ */
-/*     if (strcmp(ls->name, name) == 0) */
-/*       return ls->addr; */
-/*     ls = ls->next; */
-/*   } */
-/*   return -1; */
-/* } */
-
-/* labelCount() - Returns the number of labels in the LabelList */
-/* int labelCount(LabelList *labelList){ */
-/*   Label *ls = labelList->head; */
-/*   int c = 0; */
-/*   while(ls != NULL){ */
-/*     c++; */
-/*     ls = ls->next; */
-/*   } */
-/*   return c; */
-/* } */
 
 
 /**
  ** Machine code
  */
 
-/*  reset() - Reset CPU and memory. */
+/* reset() - Reset CPU and memory. */
 void reset(machine_6502 *machine){
   int x, y;
   for ( y = 0; y < 32; y++ ){
@@ -947,7 +834,6 @@ void reset(machine_6502 *machine){
   machine->runForever = False;
   machine->labelPtr = 0;
   machine->codeRunning = False;
-  /*  freeLabels(machine->labelIndex); */
 }
 
 void updateDisplayPixel( int addr ){
@@ -1031,242 +917,6 @@ void hexDump(machine_6502 *machine){
   if ( i&1 ) printf("-- [END]\n");
 }
 
-/* parseHex() - Converts HexString to a 32 bit integer.
-   Hexstring is expected to be of the for "$<digits>" or "#$<digits>"*/
-/* XXX: Bull shit */
-/* Bit32 parseHex(const char *hexstring){ */
-/*   char hex[MAX_LINE_LENGTH]; */
-/*   char s[MAX_LINE_LENGTH]; */
-/*   nullify(hex,MAX_LINE_LENGTH); */
-/*   nullify(s,MAX_LINE_LENGTH); */
-/*   strncpy(s,hexstring,MAX_LINE_LENGTH); */
-/*   if (isBlank(s) || strlen(s) < 2) return 0; */
-/*   if (s[0] == '#' && s[1] == '$'){ */
-/*     s[0] = '0'; */
-/*     s[1] = 'x'; */
-/*     return strtol(s,NULL,16); */
-/*   } */
-/*   if (s[0] == '$'){ 	 */
-/*     s[0] = 'x'; */
-/*     hex[0] = '0'; */
-/*     strncat(hex,s,MAX_LINE_LENGTH); */
-/*     return strtol(hex,NULL,16); */
-/*   } */
-/*   return 0; */
-/* } */
-
-
-
-/* checkSingle() - Single-byte opcodes */
-Bool checkSingle(machine_6502 *machine, Param *ps, Bit8 opcode){
- /*  if (!opcode) return False; */
-/*   if (ps->type == BLANK) { */
-/*     pushByte(machine, opcode); */
-/*     return True; */
-/*   } */
-  return False; 
-}
-
-Bool checkImmediate(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-
-/*   if (ps->type == IMMEDIATE){ */
-/*     if (ps->value <= 0xFF){ */
-/*       pushByte(machine, opcode); */
-/*       pushByte(machine, ps->value); */
-/*       return True; */
-/*     } */
-/*   } */
-/*   else if (ps->type == HILO){ */
-/*     pushByte(machine, opcode); */
-/*     if (findLabel(machine->labelIndex,ps->label)){ */
-/*       Bit32 addr = getLabelPC(machine->labelIndex,ps->label); */
-/*       switch (ps->hilo){ */
-/*       case '>': */
-/* 	pushByte(machine, (addr >> 8) & 0xFF); */
-/* 	return True; */
-/*       case '<': */
-/* 	pushByte(machine, addr & 0xFF); */
-/* 	return True; */
-/*       default: */
-/* 	return False; */
-/*       } */
-/*     } */
-/*     else { */
-/*       pushByte(machine, 0x00); /\* push a null byte on the first pass. *\/ */
-/*       return True; */
-/*     } */
-/*   } */
-  return False;
-}
-
-/* checkZeroPage() - Check if param is ZP and push value */
-Bool checkZeroPage(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if (ps->type == VALUE && */
-/*       ps->value <= 0xFF){ */
-/*     pushByte(machine, opcode); */
-/*     pushByte(machine, ps->value); */
-/*     return True; */
-/*   } */
-  return False;
-}
-Bool checkZeroPageX(machine_6502 *machine, Param *ps, Bit8 opcode){ 
-/*   if (!opcode) return False; */
-/*   if (ps->type == DIRECTION &&  */
-/*       ps->direction == 'X' && */
-/*       ps->value <= 0xFF){ */
-/*     pushByte(machine,opcode); */
-/*     pushByte(machine,ps->value); */
-/*     return True; */
-/*   } */
-  return False;
-}
-Bool checkZeroPageY(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if (ps->type == DIRECTION &&  */
-/*       ps->direction == 'Y' && */
-/*       ps->value <= 0xFF){ */
-/*     pushByte(machine,opcode); */
-/*     pushByte(machine,ps->value); */
-/*     return True; */
-/*   } */
-  return False;
-}
-
-Bool checkAbsolute(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if (ps->type == VALUE){ */
-/*     pushByte(machine, opcode); */
-/*     if (ps->value <= 0xFFFF){ */
-/*       pushWord(machine, ps->value); */
-/*       return True; */
-/*     } */
-/*   } */
-/*   else if (ps->type == LABEL){ */
-/*     if (findLabel(machine->labelIndex,ps->label)){ */
-/*       Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
-/*       pushByte(machine,opcode); */
-/*       if (addr <= 0xFFFF) { */
-/* 	pushWord(machine, addr ); */
-/* 	return True; */
-/*       } */
-/*     } */
-/*     else { */
-/*       pushByte(machine, opcode); */
-/*       pushWord(machine, 0xDEAD); /\* default for first pass *\/ */
-/*       return True; */
-/*     } */
-/*   } */
-  return False;
-}
-
-Bool checkAbsoluteX(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if (ps->type == DIRECTION && ps->direction == 'X'){ */
-/*     if (isBlank(ps->label)){ */
-/*       pushByte(machine,opcode); */
-/*       if (ps->value <= 0xFFFF){ */
-/* 	pushWord(machine,ps->value); */
-/* 	return True; */
-/*       } */
-/*     }  */
-/*     else { */
-/*       if (findLabel(machine->labelIndex, ps->label)){ */
-/* 	Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
-/* 	pushByte(machine,opcode); */
-/* 	if (addr <= 0xFFFF){ */
-/* 	  pushWord(machine, addr); */
-/* 	  return True; */
-/* 	} */
-/*       } */
-/*       else { */
-/* 	pushByte(machine, opcode); */
-/* 	pushWord(machine, 0xDEAD); /\* default for first pass *\/ */
-/* 	return True; */
-/*       } */
-/*     } */
-/*   }       */
-  return False;
-}
-
-Bool checkAbsoluteY(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if (ps->type == DIRECTION && ps->direction == 'Y'){ */
-/*     if (isBlank(ps->label)){ */
-/*       pushByte(machine,opcode); */
-/*       if (ps->value <= 0xFFFF){ */
-/* 	pushWord(machine,ps->value); */
-/* 	return True; */
-/*       } */
-/*     }  */
-/*     else { */
-/*       if (findLabel(machine->labelIndex, ps->label)){ */
-/* 	Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
-/* 	pushByte(machine,opcode); */
-/* 	if (addr <= 0xFFFF){ */
-/* 	  pushWord(machine, addr); */
-/* 	  return True; */
-/* 	} */
-/*       } */
-/*       else { */
-/* 	pushByte(machine, opcode); */
-/* 	pushWord(machine, 0xDEAD); /\* Default for first pass *\/ */
-/* 	return True; */
-/*       } */
-/*     } */
-/*   }       */
-  return False;
-}
-
-Bool checkIndirectX(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if(ps->type == INDIRECT && ps->direction == 'X'){ */
-/*     pushByte(machine, opcode); */
-/*     if (ps->value <= 0xFF){ */
-/*       pushByte(machine, ps->value); */
-/*       return True; */
-/*     } */
-/*   } */
-  return False;
-}
-
-Bool checkIndirectY(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if(ps->type == INDIRECT && ps->direction == 'Y'){ */
-/*     pushByte(machine, opcode); */
-/*     if (ps->value <= 0xFF){ */
-/*       pushByte(machine, ps->value); */
-/*       return True; */
-/*     } */
-/*   } */
-  return False;
-}
-
-Bool checkBranch(machine_6502 *machine, Param *ps, Bit8 opcode){
-/*   if (!opcode) return False; */
-/*   if (ps->type == LABEL){ */
-/*     Bit32 addr = getLabelPC(machine->labelIndex, ps->label); */
-/*     pushByte(machine, opcode); */
-/*     if (addr < (machine->codeLen+0x600)) { /\* Backwards? *\/ */
-/*       pushByte(machine, (0xff - (machine->codeLen - addr)) & 0xFF); */
-/*     } */
-/*     else */
-/*       pushByte(machine, (addr-machine->codeLen-1) & 0xFF); */
-/*     return True; */
-/*   } */
-/*   else { */
-/*     pushByte(machine,opcode); */
-/*     pushWord(machine,0); */
-/*   } */
-  return False;
-}
-
-/* XXX: blaa */
-Bool dcb(machine_6502 *machine, char *s){
-  return True;
-}
-
 Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
    switch(param->type){
     case BLANK:
@@ -1309,14 +959,18 @@ Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       pushWord(machine, param->value[0]);
       break;
     case ABS_OR_BRANCH:
-      fprintf(stderr,"ABS_OR_BRANCH\n");
       if (op->ABS > 0){
 	pushByte(machine, op->ABS);
 	pushWord(machine, param->lbladdr);
       }
       else {
 	pushByte(machine, op->BRA);
-	pushWord(machine, param->lbladdr);
+	if (param->lbladdr < (machine->codeLen + 0x600))  /*backwards?*/
+	  pushByte(machine,
+		   (0xff - (machine->codeLen-param->lbladdr)) & 0xff);
+	else
+	  pushByte(machine,
+		   (param->lbladdr - machine->codeLen-1) & 0xff);
       }
       break;
     case ABS_X:
@@ -1371,7 +1025,6 @@ Bool compileLine(AsmLine *asmline, void *args){
   }
   return True;
 }
-
 
 /* indexLabels() - Get the address for each label */
 Bool indexLabels(AsmLine *asmline, void *arg){
@@ -1470,83 +1123,46 @@ Bool compileCode(machine_6502 *machine, const char *code){
     apply(asmlist, indexLabels, machine);
     /* update label references */
     linkLabels(asmlist);
-    apply(asmlist, printAsmLine, machine);/*XXX: Debug*/
+    /*    apply(asmlist, printAsmLine, machine);*//*XXX: Debug*/
     /* Second pass: translate the instructions */
+    machine->codeLen = 0;
     apply(asmlist, compileLine, machine);
 
     if (machine->codeLen > 0 ){
-      printf("Code compiled successfully, %d bytes.\n", machine->codeLen);
+      /*      printf("Code compiled successfully, %d bytes.\n", machine->codeLen); XXX*/
       machine->memory[0x600+machine->codeLen] = 0x00;
-      return True;
+      codeOk = True;
     }
     else{
       fprintf(stderr,"No Code to run.\n");
-      return False;
+      codeOk = False;
     }
   }
   else{
     fprintf(stderr,"An error occured while parsing the file.\n");  
-    return False;
+    codeOk = False;
   }
+  freeallAsmLine(asmlist);
+  return codeOk;
 }
 
 machine_6502 *build6502(){
   machine_6502 *machine;
   machine = emalloc(sizeof(machine_6502));
-  /*  machine->labelIndex = emalloc(sizeof(LabelList));*/
-  /*  machine->labelIndex->head = NULL;*/
-  /*  machine->source = NULL;*/
-  /*  machine->sourceLen = 0;*/
   assignOpCodes(machine->opcodes);
   reset(machine);
   return machine;
 }
 
 void destroy6502(machine_6502 *machine){
-  /*  free(machine->labelIndex);*/
-  /*  machine->labelIndex = NULL;*/
-/*   if(machine->source != NULL){ */
-/*     free(machine->source); */
-/*     machine->source = NULL; */
-/*   } */
   free(machine);
   machine = NULL;
 }
 
 
-/* TEST CODE */
-/* void dumpLabelList(LabelList *labelList){ */
-/*   Label *ls = labelList->head; */
-/*   printf("ADDR  | NAME\n"); */
-/*   while(ls != NULL){ */
-/*     printf("%.5ld | %s\n",ls->addr, ls->name); */
-/*     ls = ls->next; */
-/*   } */
-/* } */
-
-void dumpOpcodes(machine_6502 *machine){
-  int i = 0;
-  while (i < NUM_OPCODES)
-    printf("opcode: %s\n", machine->opcodes[i++].name);
-}
-
-void printPS(Bool b, Param *ps){
-/*   printf("Returned %s ", b ? "True" : "False"); */
-/*   printf("PS: %c, %c, %ld, %s, %d\n", */
-/* 	 ps->direction, */
-/* 	 ps->hilo, */
-/* 	 ps->value, */
-/* 	 ps->label, */
-/* 	 ps->type); */
-
-}
-
-
 int main(int argc, char **argv){
   machine_6502 *machine = build6502();
   char *code;
-
-  /*printf("Bit8 = %d, Bit16 = %d, Bit32 = %d\n", sizeof(Bit8), sizeof(Bit16), sizeof(Bit32));*/
 
   if (argc == 1)
     eprintf("usage: assembler filename");
@@ -1556,56 +1172,6 @@ int main(int argc, char **argv){
   compileCode(machine, code);
   hexDump(machine);
 
-/*   b = parseParam("#$0AF",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("($0AF,X)",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("#>FOOBAR",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("FOOBAR",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("FOOBAR,Y",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("#123",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("$FF,X",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("$EF",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("123",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("123,Y",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("1EF,Y",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("($4F5),Y",&ps); */
-/*   printPS(b,&ps); */
-/*   b = parseParam("",&ps); */
-/*   printPS(b,&ps); */
-
-/*     dumpOpcodes(machine); */
-/*  compileCode(machine); */
-/*  hexDump(machine); */
-/*   { */
-/*     Bool b = pushLabel(machine->labelIndex,"funkyChicken", 0xff); */
-/*     assert( b == True); */
-/*   } */
-/*   pushLabel(machine->labelIndex,"monkey:", 0xfa); */
-/*   printf("%d\n", machine->regPC); */
-/*   printf("%s\n", machine->opcodes[0].name); */
-/*   printf("%s\n", machine->labelIndex->head->name); */
-/*   printf("monkey is a label %d\n", findLabel(machine->labelIndex,"monkey")); */
-/*   printf("donkey is a label %d\n", findLabel(machine->labelIndex,"donkey")); */
-/*   printf("monkey's address %d\n", getLabelPC(machine->labelIndex,"monkey")); */
-/*   setLabelPC(machine->labelIndex, "monkey", 0x06); */
-/*   printf("monkey's address %d\n", getLabelPC(machine->labelIndex,"monkey")); */
-/*   dumpLabelList(machine->labelIndex); */
-/*   freeLabels(machine->labelIndex); */
-/*   pushLabel(machine->labelIndex, "foobar:", 0xAE); */
-/*   pushLabel(machine->labelIndex, "oof:", 0xEE); */
-/*   dumpLabelList(machine->labelIndex); */
-/*   freeLabels(machine->labelIndex); */
-/*   dumpLabelList(machine->labelIndex); */
   destroy6502(machine);
   return 0;
 }
