@@ -845,6 +845,28 @@ void checkAddress(Bit32 address){
     eprintf("Address %d is beyond 64k", address);
 }
 
+/*
+ *  stackPush() - Push byte to stack
+ *
+ */
+
+void stackPush(machine_6502 *machine, Bit8 value ) {
+    machine->regSP--;
+    machine->memory[machine->regSP + 0x100] = value;
+}
+
+
+/*
+ *  stackPop() - Pop byte from stack
+ *
+ */
+
+Bit8 stackPop(machine_6502 *machine) {
+  Bit8 value =machine->memory[machine->regSP+0x100];
+  machine->regSP++;
+  return value;
+}
+
 void pushByte(machine_6502 *machine, Bit32 value ) {
   Bit32 address = 0x600 + machine->codeLen;
   checkAddress(address);
@@ -997,7 +1019,7 @@ Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
 }
 
 /* compileLine() - Compile one line of code. Returns
-   true if it compile successfully. */
+   True if it compile successfully. */
 Bool compileLine(AsmLine *asmline, void *args){
   machine_6502 *machine;
   machine = args;
@@ -1144,6 +1166,981 @@ Bool compileCode(machine_6502 *machine, const char *code){
   }
   freeallAsmLine(asmlist);
   return codeOk;
+}
+
+
+/* Emulator */
+
+void jumpBranch(machine_6502 *machine, Bit16 offset ) {
+/*
+  if( offset >= 0x80 ) {
+    regPC -= 0x100-offset;
+  } else {
+    regPC += offset;
+  }
+*/
+  if( offset > 0x7f )
+    machine->regPC = (machine->regPC - (0x100 - offset));
+  else
+    machine->regPC = (machine->regPC + offset );
+}
+
+Bit16 doINDX(machine_6502 *machine) {
+  Bit16 value = machine->memory[machine->regPC++]+machine->regX;
+  return (machine->memory[value] + (machine->memory[value+1]<<8));
+}
+
+Bit8 doZP(machine_6502 *machine) {
+  return machine->memory[machine->regPC++];
+}
+
+void doCompare(machine_6502 *machine, Bit8 reg, Bit8 val ) {
+  if( (reg+val) > 0xff ) machine->regP |= 1; else machine->regP &= 0xfe;
+  val = (reg-val);
+//  if( machine->reg+0x100-val > 0xff ) machine->regP |= 1; else machine->regP &= 0xfe;
+//  val = machine->reg+0x100-val;
+  if( val ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+  if( val & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+}
+
+void testSBC(machine_6502 *machine, Bit8 value ) {
+  Bit8 vflag, w, tmp;
+
+  if( (machine->regA ^ value ) & 0x80 )
+    vflag = 1;
+  else
+    vflag = 0;
+
+  if( machine->regP & 8 ) {
+    tmp = 0xf + (machine->regA & 0xf) - (value & 0xf) + (machine->regP&1);
+    if( tmp < 0x10 ) {
+      w = 0;
+      tmp -= 6;
+    } else {
+      w = 0x10;
+      tmp -= 0x10;
+    }
+    w += 0xf0 + (machine->regA & 0xf0) - (value & 0xf0);
+    if( w < 0x100 ) {
+      machine->regP &= 0xfe;
+      if( (machine->regP&0xbf) && w<0x80) machine->regP&=0xbf;
+      w -= 0x60;
+    } else {
+      machine->regP |= 1;
+      if( (machine->regP&0xbf) && w>=0x180) machine->regP&=0xbf;
+    }
+    w += tmp;
+  } else {
+    w = 0xff + machine->regA - value + (machine->regP&1);
+    if( w<0x100 ) {
+      machine->regP &= 0xfe;
+      if( (machine->regP&0xbf) && w<0x80 ) machine->regP&=0xbf;
+    } else {
+      machine->regP |= 1;
+      if( (machine->regP&0xbf) && w>= 0x180) machine->regP&=0xbf;
+    }
+  }
+  machine->regA = w;
+  if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+  if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+}
+
+void testADC(machine_6502 *machine, Bit8 value ) {
+  Bit8 tmp;
+
+  if( (machine->regA ^ value) & 0x80 ) {
+    machine->regP &= 0xbf;
+  } else {
+    machine->regP |= 0x40;
+  }
+
+  if( machine->regP & 8 ) {
+    tmp = (machine->regA & 0xf) + (value & 0xf) + (machine->regP&1);
+    if( tmp >= 10 ) {
+      tmp = 0x10 | ((tmp+6)&0xf);
+    }
+    tmp += (machine->regA & 0xf0) + (value & 0xf0);
+    if( tmp >= 160) {
+      machine->regP |= 1;
+      if( (machine->regP&0xbf) && tmp >= 0x180 ) machine->regP &= 0xbf;
+      tmp += 0x60;
+    } else {
+      machine->regP &= 0xfe;
+      if( (machine->regP&0xbf) && tmp<0x80 ) machine->regP &= 0xbf;
+    }
+  } else {
+    tmp = machine->regA + value + (machine->regP&1);
+    if( tmp >= 0x100 ) {
+      machine->regP |= 1;
+      if( (machine->regP&0xbf) && tmp>=0x180) machine->regP &= 0xbf;
+    } else {
+      machine->regP &= 0xfe;
+      if( (machine->regP&0xbf) && tmp<0x80) machine->regP &= 0xbf;
+    }
+  }
+  machine->regA = tmp;
+  if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+  if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+}
+
+/*
+ *  execute() - Executes one instruction.
+ *              This is the main part of the CPU emulator.
+ *
+ */
+
+void execute(machine_6502 *machine) {
+  if( ! machine->codeRunning ) return;
+
+  Bit8 opcode = popByte(machine);
+  Bit8 value; Bit16 word;
+  /*  message( "PC=" + addr2hex(regPC-1) + " opcode=" + opcode + " X="+regX + " Y=" + regY + " A=" + regA ); */
+  switch( opcode ) {
+  case 0x00:                            /* BRK implied */
+      machine->codeRunning = False;
+      break;
+  case 0x01:                            /* ORA INDX */
+      machine->regA |= doINDX();
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x05:                            /* ORA ZP */
+      machine->regA |= doZP();
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x06:                            /* ASL ZP */
+      zp = popByte(machine);
+      value = memReadByte(machine, zp );
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      memStoreByte(machine, zp, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x08:                            /* PHP */
+      stackPush( machine->regP );
+      break;
+  case 0x09:                            /* ORA IMM */
+      machine->regA |= popByte(machine);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x0a:                            /* ASL IMPL */
+      machine->regP = (machine->regP & 0xfe) | ((machine->regA>>7)&1);
+      machine->regA = machine->regA<<1;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x0d:                            /* ORA ABS */
+      machine->regA |= memReadByte(machine, popWord(machine) );
+      break;
+  case 0x0e:                            /* ASL ABS */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      memStoreByte(machine, addr, value );
+      break;
+  case 0x10:                            /* BPL */
+      offset = popByte(machine);
+      if( (machine->regP & 0x80) == 0 ) jumpBranch( offset );
+      break;
+  case 0x11:                            /* ORA INDY */
+      zp = popByte(machine);
+      value = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regY;
+      machine->regA |= memReadByte(machine,value);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x15:                            /* ORA ZPX */
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      machine->regA |= memReadByte(machine,addr);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x16:                            /* ASL ZPX */
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      value = memReadByte(machine,addr);
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x18:                            /* CLC */
+      machine->regP &= 0xfe;
+      break;
+  case 0x19:                            /* ORA ABSY */
+      addr = popWord(machine) + machine->regY;
+      machine->regA |= memReadByte(machine, addr );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x1d:                            /* ORA ABSX */
+      addr = popWord(machine) + machine->regX;
+      machine->regA |= memReadByte(machine, addr );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x1e:                            /* ASL ABSX */
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x20:                            /* JSR ABS */
+      addr = popWord(machine);
+      currAddr = machine->regPC-1;
+      stackPush( ((currAddr >> 8) & 0xff) );
+      stackPush( (currAddr & 0xff) );
+      machine->regPC = addr;
+      break;
+  case 0x21:                            /* AND INDX */
+      addr = popByte(machine) + machine->regX;
+      value = memReadByte(machine, addr ) + (memReadByte(machine, addr+1) << 8);
+      machine->regA &= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x24:                            /* BIT ZP */
+      zp = popByte(machine);
+      value = memReadByte(machine, zp );
+      if( value & machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      machine->regP = (machine->regP & 0x3f) | (value & 0xc0);
+      break;
+  case 0x25:                            /* AND ZP */
+      zp = popByte(machine);
+      value = memReadByte(machine, zp ) & machine->regA;
+      memStoreByte(machine, zp, value );
+      break;
+  case 0x26:                            /* ROL ZP */
+      sf = (machine->regP & 1);
+      addr = popByte(machine);
+      value = memReadByte(machine, addr ) & machine->regA;
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      value |= sf;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x28:                            /* PLP */
+      machine->regP = stackPop() | 0x20;
+      break;
+  case 0x29:                            /* AND IMM */
+      machine->regA &= popByte(machine);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x2a:                            /* ROL A */
+      sf = (machine->regP&1);
+      machine->regP = (machine->regP&0xfe) | ((machine->regA>>7)&1);
+      machine->regA = machine->regA << 1;
+      machine->regA |= sf;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x2c:                            /* BIT ABS */
+      value = memReadByte(machine, popWord(machine) );
+      if( value & machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      machine->regP = (machine->regP & 0x3f) | (value & 0xc0);
+      break;
+  case 0x2d:                            /* AND ABS */
+      value = memReadByte(machine, popWord(machine) );
+      machine->regA &= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x2e:                            /* ROL ABS */
+      sf = machine->regP & 1;
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      value |= sf;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x30:                            /* BMI */
+      offset = popByte(machine);
+      if( machine->regP & 0x80 ) jumpBranch( offset );
+      break;
+  case 0x31:                            /* AND INDY */
+      zp = popByte(machine);
+      value = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regY;
+      machine->regA &= memReadByte(machine,value);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x35:                            /* AND INDX */
+      zp = popByte(machine);
+      value = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regX;
+      machine->regA &= memReadByte(machine,value);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x36:                            /* ROL ZPX */
+      sf = machine->regP & 1;
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      value |= sf;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x38:                            /* SEC */
+      machine->regP |= 1;
+      break;
+  case 0x39:                            /* AND ABSY */
+      addr = popWord(machine) + machine->regY;
+      value = memReadByte(machine, addr );
+      machine->regA &= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x3d:                            /* AND ABSX */
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      machine->regA &= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x3e:                            /* ROL ABSX */
+      sf = machine->regP&1;
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP & 0xfe) | ((value>>7)&1);
+      value = value << 1;
+      value |= sf;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x40:                            /* RTI (unsupported, =NOP) */
+      break;
+  case 0x41:                            /* EOR INDX */
+      zp = popByte(machine);
+      value = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regX;
+      machine->regA ^= memReadByte(machine,value);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x45:                            /* EOR ZPX */
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      value = memReadByte(machine, addr );
+      machine->regA ^= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x46:                            /* LSR ZPX */
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP & 0xfe) | (value&1);
+      value = value >> 1;
+      memStoreByte(machine, addr, value );
+      if( value != 0 ) machine->regP &= 0xfd; else machine->regP |= 2;
+      if( (value&0x80) == 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x48:                            /* PHA */
+      stackPush( machine->regA );
+      break;
+  case 0x49:                            /* EOR IMM */
+      machine->regA ^= popByte(machine);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x4a:                            /* LSR */
+      machine->regP = (machine->regP&0xfe) | (machine->regA&1);
+      machine->regA = machine->regA >> 1;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x4c:                            /* JMP abs */
+      machine->regPC = popWord(machine);
+      break;
+  case 0x4d:                            /* EOR abs */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      machine->regA ^= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x4e:                           /* LSR abs */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe)|(value&1);
+      value = value >> 1;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x50:                           /* BVC (on overflow clear) */
+      offset = popByte(machine);
+      if( (machine->regP & 0x40) == 0 ) jumpBranch( offset );
+      break;
+  case 0x51:                           /* EOR INDY */
+      zp = popByte(machine);
+      value = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regY;
+      machine->regA ^= memReadByte(machine,value);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x55:                           /* EOR ZPX */
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      machine->regA ^= memReadByte(machine, addr );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x56:                           /* LSR ZPX */
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe) | (value&1);
+      value = value >> 1;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x58:                           /* CLI (does nothing) */
+      break;
+  case 0x59:                           /* EOR ABSY */
+      addr = popWord(machine) + machine->regY;
+      value = memReadByte(machine, addr );
+      machine->regA ^= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x5d:                           /* EOR ABSX */
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      machine->regA ^= value;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x5e:                           /* LSR ABSX */
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe) | (value&1);
+      value = value >> 1;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x60:                           /* RTS */
+      machine->regPC = (stackPop()+1) | (stackPop()<<8);
+      break;
+  case 0x61:                           /* ADC INDX */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regX;
+      value = memReadByte(machine, addr );
+      testADC( value );
+      break;
+  case 0x65:                           /* ADC ZP */
+      addr = popByte(machine);
+      value = memReadByte(machine, addr );
+      testADC( value );
+      break;
+  case 0x66:                           /* ROR ZP */
+      sf = machine->regP&1;
+      addr = popByte(machine);
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe)|(value&1);
+      value = value >> 1;
+      if( sf ) value |= 0x80;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x68:                           /* PLA */
+      machine->regA = stackPop();
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x69:                           /* ADC IMM */
+      value = popByte(machine);
+      testADC( value );
+      break;
+  case 0x6a:                           /* ROR A */
+      sf = machine->regP&1;
+      machine->regP = (machine->regP&0xfe) | (machine->regA&1);
+      machine->regA = machine->regA >> 1;
+      if( sf ) machine->regA |= 0x80;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+      /*    case 0x6c: // JMP INDIR */
+      /*      break; */
+  case 0x6d:                           /* ADC ABS */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      testADC( value );
+      break;
+  case 0x6e:                           /* ROR ABS */
+      sf = machine->regP&1;
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe)|(value&1);
+      value = value >> 1;
+      if( sf ) value |= 0x80;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x70:                           /* BVS (branch on overflow set) */
+      offset = popByte(machine);
+      if( machine->regP & 0x40 ) jumpBranch( offset );
+      break;
+  case 0x71:                           /* ADC INY */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8);
+      value = memReadByte(machine, addr + machine->regY );
+      testADC( value );
+      break;
+  case 0x75:                           /* ADC ZPX */
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe) | (value&1);
+      testADC( value );
+      break;
+  case 0x76:                           /* ROR ZPX */
+      sf = (machine->regP&1);
+      addr = (popByte(machine) + machine->regX) & 0xff;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe) | (value&1);
+      value = value >> 1;
+      if( sf ) value |= 0x80;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x78:                           /* SEI (does nothing) */
+      break;
+  case 0x79:                           /* ADC ABSY */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr + machine->regY );
+      testADC( value );
+      break;
+  case 0x7d:                           /* ADC ABSX */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr + machine->regX );
+      testADC( value );
+      break;
+  case 0x7e:                           /* ROR ABSX */
+      sf = machine->regP&1;
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe) | (value&1);
+      value = value >> 1;
+      if( value ) value |= 0x80;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x81:                           /* STA INDX */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regX;
+      memStoreByte(machine, addr, machine->regA );
+      break;
+  case 0x84:                           /* STY ZP */
+      memStoreByte(machine, popByte(machine), machine->regY );
+      break;
+  case 0x85:                           /* STA ZP */
+      memStoreByte(machine, popByte(machine), machine->regA );
+      break;
+  case 0x86:                           /* STX ZP */
+      memStoreByte(machine, popByte(machine), machine->regX );
+      break;
+  case 0x88:                           /* DEY (1 byte) */
+      machine->regY = (machine->regY-1) & 0xff;
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x8a:                           /* TXA (1 byte); */
+      machine->regA = machine->regX;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x8c:                           /* STY abs */
+      memStoreByte(machine, popWord(machine), machine->regY );
+      break;
+  case 0x8d:                           /* STA ABS (3 bytes) */
+      memStoreByte(machine, popWord(machine), machine->regA );
+      break;
+  case 0x8e:                           /* STX abs */
+      memStoreByte(machine, popWord(machine), machine->regX );
+      break;
+  case 0x90:                           /* BCC (branch on carry clear) */
+      offset = popByte(machine);
+      if( ( machine->regP & 1 ) == 0 ) jumpBranch( offset );
+      break;
+  case 0x91:                           /* STA INDY */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regY;
+      memStoreByte(machine, addr, machine->regA );
+      break;
+  case 0x94:                           /* STY ZPX */
+      memStoreByte(machine, popByte(machine) + machine->regX, machine->regY );
+      break;
+  case 0x95:                           /* STA ZPX */
+      memStoreByte(machine, popByte(machine) + machine->regX, machine->regA );
+      break;
+  case 0x96:                           /* STX ZPY */
+      memStoreByte(machine, popByte(machine) + machine->regY, machine->regX );
+      break;
+  case 0x98:                           /* TYA */
+      machine->regA = machine->regY;
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0x99:                           /* STA ABSY */
+      memStoreByte(machine, popWord(machine) + machine->regY, machine->regA );
+      break;
+  case 0x9a:                           /* TXS */
+      machine->regSP = machine->regX;
+      break;
+  case 0x9d:                           /* STA ABSX */
+      addr = popWord(machine);
+      memStoreByte(machine, addr + machine->regX, machine->regA );
+      break;
+  case 0xa0:                           /* LDY IMM */
+      machine->regY = popByte(machine);
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xa1:                           /* LDA INDX */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8);
+      machine->regA = memReadByte(machine, addr + machine->regX );
+      /*message( "LDA INDX " + (addr+machine->regX) + " = " + machine->regA ); */
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xa2:                           /* LDX IMM */
+      machine->regX = popByte(machine);
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xa4:                           /* LDY ZP */
+      machine->regY = memReadByte(machine, popByte(machine) );
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xa5:                           /* LDA ZP */
+      machine->regA = memReadByte(machine, popByte(machine) );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xa6:                          /* LDX ZP */
+      machine->regX = memReadByte(machine, popByte(machine) );
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xa8:                          /* TAY */
+      machine->regY = machine->regA;
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xa9:                          /* LDA IMM */
+      machine->regA = popByte(machine);
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xaa:                          /* TAX */
+      machine->regX = machine->regA;
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xac:                          /* LDY ABS */
+      machine->regY = memReadByte(machine, popWord(machine) );
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xad:                          /* LDA ABS */
+      machine->regA = memReadByte(machine, popWord(machine) );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xae:                          /* LDX ABS */
+      machine->regX = memReadByte(machine, popWord(machine) );
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xb0:                          /* BCS */
+      offset = popByte(machine);
+      if( machine->regP & 1 ) jumpBranch( offset );
+      break;
+  case 0xb1:                          /* LDA INDY */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regY;
+      machine->regA = memReadByte(machine, addr );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xb4:                          /* LDY ZPX */
+      machine->regY = memReadByte(machine, popByte(machine) + machine->regX );
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xb5:                          /* LDA ZPX */
+      machine->regA = memReadByte(machine, (popByte(machine) + machine->regX) & 0xff );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xb6:                          /* LDX ZPY */
+      machine->regX = memReadByte(machine, popByte(machine) + machine->regY );
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xb8:                          /* CLV */
+      machine->regP &= 0xbf;
+      break;
+  case 0xb9:                          /* LDA ABSY */
+      addr = popWord(machine) + machine->regY;
+      machine->regA = memReadByte(machine, addr );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xba:                          /* TSX */
+      machine->regX = machine->regSP;
+      break;
+  case 0xbc:                          /* LDY ABSX */
+      addr = popWord(machine) + machine->regX;
+      machine->regY = memReadByte(machine, addr );
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xbd:                          /* LDA ABSX */
+      addr = popWord(machine) + machine->regX;
+      machine->regA = memReadByte(machine, addr );
+      if( machine->regA ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regA & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xbe:                          /* LDX ABSY */
+      addr = popWord(machine) + machine->regY;
+      machine->regX = memReadByte(machine, addr );
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xc0:                          /* CPY IMM */
+      value = popByte(machine);
+      if( (machine->regY+value) > 0xff ) machine->regP |= 1; else machine->regP &= 0xfe;
+      ov = value;
+      value = (machine->regY-value);
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xc1:                          /* CMP INDY */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regY;
+      value = memReadByte(machine, addr );
+      doCompare( machine->regA, value );
+      break;
+  case 0xc4:                          /* CPY ZP */
+      value = memReadByte(machine, popByte(machine) );
+      doCompare( machine->regY, value );
+      break;
+  case 0xc5:                          /* CMP ZP */
+      value = memReadByte(machine, popByte(machine) );
+      doCompare( machine->regA, value );
+      break;
+  case 0xc6:                          /* DEC ZP */
+      zp = popByte(machine);
+      value = memReadByte(machine, zp );
+      memStoreByte(machine, zp, (value-1)&0xff );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xc8:                          /* INY */
+      machine->regY = (machine->regY + 1) & 0xff;
+      if( machine->regY ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regY & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xc9:                          /* CMP IMM */
+      value = popByte(machine);
+      doCompare( machine->regA, value );
+      break;
+  case 0xca:                          /* DEX */
+      machine->regX = (machine->regX-1) & 0xff;
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xcc:                          /* CPY ABS */
+      value = memReadByte(machine, popWord(machine) );
+      doCompare( machine->regY, value );
+      break;
+  case 0xcd:                          /* CMP ABS */
+      value = memReadByte(machine, popWord(machine) );
+      doCompare( machine->regA, value );
+      break;
+  case 0xce:                          /* DEC ABS */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      value = (value-1)&0xff;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xd0:                          /* BNE */
+      offset = popByte(machine);
+      /*if( (machine->regP&2)==0 ) { oldPC = machine->regPC; jumpBranch( offset ); message( "Jumping from " + oldPC + " to " + machine->regPC ); } else { message( "NOT jumping!" ); } */
+      if( (machine->regP&2)==0 ) jumpBranch( offset );
+      break;
+  case 0xd1:                          /* CMP INDY */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regY;
+      value = memReadByte(machine, addr );
+      doCompare( machine->regA, value );
+      break;
+  case 0xd5:                          /* CMP ZPX */
+      value = memReadByte(machine, popByte(machine) + machine->regX );
+      doCompare( machine->regA, value );
+      break;
+  case 0xd6:                          /* DEC ZPX */
+      addr = popByte(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      value = (value-1)&0xff;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xd8:                          /* CLD (CLear Decimal) */
+      machine->regP &= 0xf7;
+      break;
+  case 0xd9:                          /* CMP ABSY */
+      addr = popWord(machine) + machine->regY;
+      value = memReadByte(machine, addr );
+      doCompare( machine->regA, value );
+      break;
+  case 0xdd:                          /* CMP ABSX */
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      doCompare( machine->regA, value );
+      break;
+  case 0xde:                          /* DEC ABSX */
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      value = (value-1)&0xff;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xe0:                          /* CPX IMM */
+      value = popByte(machine);
+      doCompare( machine->regX, value );
+      break;
+  case 0xe1:                          /* SBC INDX */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8) + machine->regX;
+      value = memReadByte(machine, addr );
+      testSBC( value );
+      break;
+  case 0xe4:                          /* CPX ZP */
+      value = memReadByte(machine, popByte(machine) );
+      doCompare( machine->regX, value );
+      break;
+  case 0xe5:                          /* SBC ZP */
+      addr = popByte(machine);
+      value = memReadByte(machine, addr );
+      testSBC( value );
+      break;
+  case 0xe6:                          /* INC ZP */
+      zp = popByte(machine);
+      value = memReadByte(machine, zp );
+      value = (value+1)&0xff;
+      memStoreByte(machine, zp, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xe8:                          /* INX */
+      machine->regX = (machine->regX + 1) & 0xff;
+      if( machine->regX ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( machine->regX & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xe9:                         /* SBC IMM */
+      value = popByte(machine);
+      testSBC( value );
+      break;
+  case 0xea:                         /* NOP */
+      break;
+  case 0xec:                         /* CPX ABS */
+      value = memReadByte(machine, popWord(machine) );
+      doCompare( machine->regX, value );
+      break;
+  case 0xed:                         /* SBC ABS */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      testSBC( value );
+      break;
+  case 0xee:                         /* INC ABS */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr );
+      value = (value+1)&0xff;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xf0:                         /* BEQ */
+      offset = popByte(machine);
+      if( machine->regP&2 ) jumpBranch( offset );
+      break;
+  case 0xf1:                         /* SBC INDY */
+      zp = popByte(machine);
+      addr = memReadByte(machine,zp) + (memReadByte(machine,zp+1)<<8);
+      value = memReadByte(machine, addr + machine->regY );
+      testSBC( value );
+      break;
+  case 0xf5:                         /* SBC ZPX */
+      addr = (popByte(machine) + machine->regX)&0xff;
+      value = memReadByte(machine, addr );
+      machine->regP = (machine->regP&0xfe)|(value&1);
+      testSBC( value );
+      break;
+  case 0xf6:                         /* INC ZPX */
+      addr = popByte(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      value=(value+1)&0xff;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+  case 0xf8:                         /* SED */
+      machine->regP |= 8;
+      break;
+  case 0xf9:                          /* SBC ABSY */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr + machine->regY );
+      testSBC( value );
+      break;
+  case 0xfd:                         /* SBC ABSX */
+      addr = popWord(machine);
+      value = memReadByte(machine, addr + machine->regX );
+      testSBC( value );
+      break;
+  case 0xfe: /* INC ABSX */
+      addr = popWord(machine) + machine->regX;
+      value = memReadByte(machine, addr );
+      value=(value+1)&0xff;
+      memStoreByte(machine, addr, value );
+      if( value ) machine->regP &= 0xfd; else machine->regP |= 0x02;
+      if( value & 0x80 ) machine->regP |= 0x80; else machine->regP &= 0x7f;
+      break;
+    default:
+      fprintf(stderr, "Address $ %x - unknown opcode %x",machine->regPC,opcode );
+      /*machine->regPC = compiledCode.length; */
+      machine->regPC = (0x600+machine->codeLen);
+      break;
+  }
+
+  if( (machine->regPC == 0) || (!machine->codeRunning) || (machine->regPC>(machine->codeLen+0x600)) ) {
+    fprintf(stderr, "Program end at PC=$ %x" + machine->regPC );
+    machine->codeRunning = False;
+  }
 }
 
 machine_6502 *build6502(){
