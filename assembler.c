@@ -41,8 +41,8 @@ enum {
   MAX_LABEL_LEN = 80, 
   NUM_OPCODES = 56, /* Number of unique instructions not counting DCB */
   MEM_64K = 77056, /* We have 64k of memory to work with. */
-  MAX_PARAM_VALUE = 16, /* DCB can have up to 16 values behind the opcode */
-  MAX_CMD_LEN = 4 /* Each opcode is 3 characeters long and we a place for the null character */
+  MAX_PARAM_VALUE = 25, /* The number of values allowed behind dcb */
+  MAX_CMD_LEN = 4 /* Each assembly command is 3 characeters long and we a place for the null character */
 };
 
 typedef enum  {
@@ -65,7 +65,7 @@ typedef uint16_t Bit16;
 typedef uint32_t Bit32;
 
 typedef struct {
-  char name[4];
+  char name[MAX_CMD_LEN];
   Bit8 Imm;
   Bit8 ZP;
   Bit8 ZPX;
@@ -79,32 +79,27 @@ typedef struct {
   Bit8 BRA;
 } Opcodes;
 
-struct _Label {
-  char *name;
-  Bit32 addr;
-  struct _Label *next;
-};
-
-typedef struct _Label Label;
-
-typedef struct {
-  Label *head;
-  Label *list;
-} LabelList;
-
 typedef struct {
   ParamType type;
   Bit32 value[MAX_PARAM_VALUE];
   unsigned int vp; /*value pointer, index into the value table.*/
   char *label;
+  Bit32 lbladdr;
 } Param;
 
 typedef struct {
-  char *label;
+  Bit32 addr; /* Address of the label */  
+  char *label; 
+} Label;  
+
+typedef struct AsmLine AsmLine;
+struct AsmLine {
+  Bool labelDecl; /* Does the line have a label declaration? */
+  Label *label;
   char *command;
   Param *param;
-} AsmLine;
-
+  AsmLine *next; /* in list */
+};
 
 typedef struct {
   Bool codeCompiledOK;
@@ -116,15 +111,12 @@ typedef struct {
   Bit8 regSP;
   Bit8 memory[MEM_64K];
   Bool runForever;
-  LabelList *labelIndex;
   int labelPtr;
   Bool codeRunning;
   int myInterval;
   Opcodes opcodes[NUM_OPCODES];
   int screen[32][32];
   int codeLen;
-  char *source;
-  unsigned int sourceLen;
 } machine_6502;
 
 typedef Bool (*NextToken) (AsmLine *, machine_6502 *);
@@ -253,13 +245,109 @@ char *estrdup(const char *source){
  ** Assembly parser
  */
 
+Param *newParam(){
+  Param *newp;
+  int i = 0;
+
+  newp = (Param *) emalloc(sizeof(Param));
+  newp->type = BLANK;
+  for (i = 0; i < MAX_PARAM_VALUE; i++)
+    newp->value[i] = 0;
+  newp->vp = 0;
+  newp->label = ecalloc(MAX_LABEL_LEN,sizeof(char));
+  newp->lbladdr = 0;
+  return newp;
+}
+
+/* Copy the fields from p2 to p1 */
+void copyParam(Param *p1, Param *p2){
+  int i = 0;
+  strncpy(p1->label,p2->label,MAX_LABEL_LEN);
+  for(i = 0; i < MAX_PARAM_VALUE; i++)
+    p1->value[i] = p2->value[i];
+  p1->vp = p2->vp;
+  p1->type = p2->type;
+}
+
+Label *newLabel(){
+  Label *newp; 
+
+  newp = (Label *) emalloc(sizeof(Label));
+  newp->addr = 0;
+  newp->label = ecalloc(MAX_LABEL_LEN,sizeof(char));
+  
+  return newp;
+}
+
+AsmLine *newAsmLine(char *cmd, char *label, Bool decl, Param *param, int lc)
+{
+    AsmLine *newp;
+
+    newp =  (AsmLine *) emalloc(sizeof(AsmLine));
+    newp->labelDecl = decl;
+    newp->label = newLabel();
+    strncpy(newp->label->label,label,MAX_LABEL_LEN);
+    newp->command = estrdup(cmd);
+    newp->param = newParam();
+    copyParam(newp->param, param);
+    newp->next = NULL;
+    return newp;
+}
+
+AsmLine *addend(AsmLine *listp, AsmLine *newp)
+{
+    AsmLine *p;
+    if(listp == NULL)
+      return newp;
+    for (p =listp; p->next != NULL; p = p->next)
+      ;
+    p->next = newp;
+    return listp;
+}
+
+Bool apply(AsmLine *listp, Bool(*fn)(AsmLine*, void*), void *arg)
+{
+  AsmLine *p;
+  if(listp == NULL)
+    return False;
+  for (p = listp; p != NULL; p = p->next)
+    if (! fn(p,arg) )
+      return False;
+  return True;
+}
+
+void freeParam(Param *param){
+  free(param->label);
+  free(param);
+}
+
+void freeLabel(Label *label){
+  free(label->label);
+  free(label);
+}
+
+void freeallAsmLine(AsmLine *listp)
+{
+    AsmLine *next;
+    for(; listp != NULL; listp = next){
+       next = listp->next;
+       /* assmes name is freed elsewhere */
+       freeParam(listp->param);
+       freeLabel(listp->label);
+       free(listp->command);
+       free(listp);
+    }
+}
+
 Bool addvalue(Param *param,Bit32 value){
-  if (0 <= param->vp && param->vp <= MAX_PARAM_VALUE) {
+  if (0 <= param->vp && param->vp < MAX_PARAM_VALUE) {
     param->value[param->vp++] = value;
     return True;
   }
-  else
+  else {
+    fprintf(stderr,"Wrong number of parameters: %d. The limit is %d\n",param->vp+1, MAX_PARAM_VALUE);
     return False;
+  }
 }
 
 void parseError(char *s){
@@ -438,7 +526,6 @@ Bool immediate(char **s, Param *param){
     (*s)++; /* move past < or > */
     if (paramLabel(s, &label)){
       int ln = strlen(label) + 1;
-      param->label = ecalloc(ln, sizeof(char));
       strncpy(param->label, label, ln);
       free(label);
       return True;
@@ -590,7 +677,7 @@ Bool label(char **s, Param *param){
       else
 	labelOk = False;
     }
-    param->label = estrdup(label);
+    strncpy(param->label,label,MAX_LABEL_LEN);
   }
   free(label);
   return labelOk;
@@ -629,27 +716,31 @@ void initParam(Param *param){
   for(i = 0; i < MAX_PARAM_VALUE; i++)
     param->value[i] = 0;
   param->vp = 0;
-  param->label = NULL;
+  nullify(param->label,MAX_LABEL_LEN);
 }
   
 
-Bool parseAssembly(machine_6502 *machine, const char *code){
+AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *code){
   char *s;
   char *cmd = ecalloc(MAX_CMD_LEN, sizeof(char));
   char *label = ecalloc(MAX_LABEL_LEN, sizeof(char));
   char *start; /*pointer to the start of the code.*/
-  Bool codeOk = True;
   unsigned int lc = 1;
-  Param param;
+  Param *param;
+  Bool decl;
+  AsmLine *listp = NULL;
 
+  *codeOk = True;
+  param = newParam();
   s = estrdup(code);
   start = s;
   stoupper(&s);
 
-  while(*s != '\0'){
-    initParam(&param);
+  while(*s != '\0' && *codeOk){
+    initParam(param);
     nullify(cmd, MAX_CMD_LEN);
-    nullify(label, MAX_CMD_LEN);
+    nullify(label, MAX_LABEL_LEN);
+    decl = False;
     skipSpace(&s);
     comment(&s);
     if (*s == '\n'){
@@ -660,50 +751,55 @@ Bool parseAssembly(machine_6502 *machine, const char *code){
     else if (*s == '\0')
       continue; /* no newline at the end of the code */
     else if (hasChar(s,':')){
+      decl = True;
       if(! declareLabel(&s,&label)){
-	codeOk = False;
+	*codeOk = False;
 	break;
       }
       skipSpace(&s);
     }
     if(!command(machine, &s, &cmd)){
-      codeOk = False;
+      *codeOk = False;
       break;
     }
     skipSpace(&s);
     comment(&s);
-    if(!parameter(cmd, &s, &param)){
-      codeOk = False;
+    if(!parameter(cmd, &s, param)){
+      *codeOk = False;
       break;
     }
     skipSpace(&s);
     comment(&s);
     if (*s == '\n' || *s == '\0'){
       int i;
+      AsmLine *asm;
+      asm = newAsmLine(cmd,label,decl,param,lc);
+      listp = addend(listp,asm);
       /* add the assembly line to the list */
-      fprintf(stderr,"%9d\t%s %d ", lc, cmd, param.type);
-      for(i = 0; i < MAX_PARAM_VALUE; i++){
-	fprintf(stderr,"%s%lx,",(i==0)?"Val: ":" ",param.value[i]);
-      }
-      fprintf(stderr,"\n");
+/*       fprintf(stderr,"%9d\t%s %d ", lc, cmd, param->type); */
+/*       for(i = 0; i < MAX_PARAM_VALUE; i++){ */
+/* 	fprintf(stderr,"%s%lx,",(i==0)?"Val: ":" ",param->value[i]); */
+/*       } */
+/*       fprintf(stderr,"\n"); */
     }
     else {
-      codeOk = False;
+      *codeOk = False;
       break;
     }
   }
-  if (! codeOk)
-    fprintf(stderr,"Syntax error at line %u", lc);
+  if (! *codeOk)
+    fprintf(stderr,"Syntax error at line %u\n", lc);
   free(start);
   free(cmd);
   free(label);
-  return codeOk;
+  freeParam(param);
+  return listp;
 }
     
     
 
 /* fileToBuffer() - Allocates a buffer and loads all of the file into memory. */
-char *fileToBuffer(char *filename, unsigned int *returnSize){
+char *fileToBuffer(char *filename){
   const int defaultSize = 1024;
   FILE *ifp;
   int c;
@@ -730,14 +826,12 @@ char *fileToBuffer(char *filename, unsigned int *returnSize){
     }
   }
   fclose(ifp);
-  *returnSize = i;
-  buffer = realloc(buffer, *returnSize+2);
+  buffer = realloc(buffer, i+2);
   if (buffer == NULL) 
     eprintf("Could not resize buffer.");
   /* Make sure we have a line feed at the end */
-  buffer[*returnSize] = '\n';
-  buffer[*returnSize+1] = '\0';
-  *returnSize+=2;
+  buffer[i] = '\n';
+  buffer[i+1] = '\0';
   return buffer;
 }
  
@@ -748,83 +842,83 @@ char *fileToBuffer(char *filename, unsigned int *returnSize){
  */
 
 /* freeLabels() - Release all of the memory used by the label list. */
-void freeLabels(LabelList *labelList){
-  Label *ls = labelList->head;
-  while (ls != NULL) {
-    Label *tmp = ls;
-    ls = ls->next;
-    free(tmp->name);
-    free(tmp);
-  }
-  labelList->list = NULL;
-  labelList->head = NULL;
-}
+/* void freeLabels(LabelList *labelList){ */
+/*   Label *ls = labelList->head; */
+/*   while (ls != NULL) { */
+/*     Label *tmp = ls; */
+/*     ls = ls->next; */
+/*     free(tmp->name); */
+/*     free(tmp); */
+/*   } */
+/*   labelList->list = NULL; */
+/*   labelList->head = NULL; */
+/* } */
 
 /* findLabel() - Returns true if the label exists. */
-Bool findLabel(LabelList *labelList, char *name){
-  Label *ls = labelList->head;
-  while(ls != NULL){
-    if (strcmp(ls->name, name) == 0)
-      return True;
-    ls = ls->next;
-  }
-  return False;
-}
+/* Bool findLabel(LabelList *labelList, char *name){ */
+/*   Label *ls = labelList->head; */
+/*   while(ls != NULL){ */
+/*     if (strcmp(ls->name, name) == 0) */
+/*       return True; */
+/*     ls = ls->next; */
+/*   } */
+/*   return False; */
+/* } */
 
 /* pushLabel() - Push label onto the list. Return false if label already exists. */
-Bool pushLabel(LabelList *labelList, char *name, int addr){
-  if ( isBlank(name) || findLabel(labelList, name ) ) return False;
+/* Bool pushLabel(LabelList *labelList, char *name, int addr){ */
+/*   if ( isBlank(name) || findLabel(labelList, name ) ) return False; */
 
-  if (labelList->head == NULL){
-    labelList->list = emalloc(sizeof(Label));
-    labelList->head = labelList->list;
-  } 
-  else {
-    Label *new = emalloc(sizeof(Label));
-    labelList->list->next = new;
-    labelList->list = new;
-  }
-  labelList->list->name = estrdup(name);
-  labelList->list->name[strlen(name)-1] = '\0'; /* overwrite the colon */
-  labelList->list->addr = addr;
-  labelList->list->next = NULL;
-  return True;
-}
+/*   if (labelList->head == NULL){ */
+/*     labelList->list = emalloc(sizeof(Label)); */
+/*     labelList->head = labelList->list; */
+/*   }  */
+/*   else { */
+/*     Label *new = emalloc(sizeof(Label)); */
+/*     labelList->list->next = new; */
+/*     labelList->list = new; */
+/*   } */
+/*   labelList->list->name = estrdup(name); */
+/*   labelList->list->name[strlen(name)-1] = '\0'; /\* overwrite the colon *\/ */
+/*   labelList->list->addr = addr; */
+/*   labelList->list->next = NULL; */
+/*   return True; */
+/* } */
 
 /* setLabelPC() - Associates label with address */
-Bool setLabelPC(LabelList *labelList, char *name, int addr) {
-  Label *ls = labelList->head;
-  while(ls != NULL){
-    if (strcmp(ls->name, name) == 0){
-      ls->addr = addr;
-      return True;
-    }
-    ls = ls->next;
-  }
-  return False;
-}
+/* Bool setLabelPC(LabelList *labelList, char *name, int addr) { */
+/*   Label *ls = labelList->head; */
+/*   while(ls != NULL){ */
+/*     if (strcmp(ls->name, name) == 0){ */
+/*       ls->addr = addr; */
+/*       return True; */
+/*     } */
+/*     ls = ls->next; */
+/*   } */
+/*   return False; */
+/* } */
 
 /* getLabelPC() - Get address associated with label */
-int getLabelPC(LabelList *labelList, char *name){
-  Label *ls = labelList->head;
-  while(ls != NULL){
-    if (strcmp(ls->name, name) == 0)
-      return ls->addr;
-    ls = ls->next;
-  }
-  return -1;
-}
+/* int getLabelPC(LabelList *labelList, char *name){ */
+/*   Label *ls = labelList->head; */
+/*   while(ls != NULL){ */
+/*     if (strcmp(ls->name, name) == 0) */
+/*       return ls->addr; */
+/*     ls = ls->next; */
+/*   } */
+/*   return -1; */
+/* } */
 
 /* labelCount() - Returns the number of labels in the LabelList */
-int labelCount(LabelList *labelList){
-  Label *ls = labelList->head;
-  int c = 0;
-  while(ls != NULL){
-    c++;
-    ls = ls->next;
-  }
-  return c;
-}
+/* int labelCount(LabelList *labelList){ */
+/*   Label *ls = labelList->head; */
+/*   int c = 0; */
+/*   while(ls != NULL){ */
+/*     c++; */
+/*     ls = ls->next; */
+/*   } */
+/*   return c; */
+/* } */
 
 
 /**
@@ -853,7 +947,7 @@ void reset(machine_6502 *machine){
   machine->runForever = False;
   machine->labelPtr = 0;
   machine->codeRunning = False;
-  freeLabels(machine->labelIndex);
+  /*  freeLabels(machine->labelIndex); */
 }
 
 void updateDisplayPixel( int addr ){
@@ -1173,125 +1267,262 @@ Bool dcb(machine_6502 *machine, char *s){
   return True;
 }
 
+Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
+   switch(param->type){
+    case BLANK:
+      pushByte(machine, op->SNGL);
+      break;
+    case IMMEDIATE_VALUE:
+      pushByte(machine, op->Imm);
+      pushByte(machine, param->value[0]);
+      break;
+    case IMMEDIATE_GREAT:
+      pushByte(machine, op->Imm);
+      pushByte(machine, param->lbladdr / 0xFF);
+      break;
+    case IMMEDIATE_LESS:
+      pushByte(machine, op->Imm);
+      pushByte(machine, param->lbladdr & 0xFF);
+      break;
+    case INDIRECT_X:
+      pushByte(machine, op->INDX);
+      pushByte(machine, param->value[0]);
+      break;
+    case INDIRECT_Y:
+      pushByte(machine, op->INDY);
+      pushByte(machine, param->value[0]);
+      break;
+    case ZERO:
+      pushByte(machine, op->ZP);
+      pushByte(machine, param->value[0]);
+      break;
+    case ZERO_X:
+      pushByte(machine, op->ZPX);
+      pushByte(machine, param->value[0]);
+      break;
+    case ZERO_Y:
+      pushByte(machine, op->ZPY);
+      pushByte(machine, param->value[0]);
+      break;
+    case ABS_VALUE:
+      pushByte(machine, op->ABS);
+      pushWord(machine, param->value[0]);
+      break;
+    case ABS_OR_BRANCH:
+      fprintf(stderr,"ABS_OR_BRANCH\n");
+      if (op->ABS > 0){
+	pushByte(machine, op->ABS);
+	pushWord(machine, param->lbladdr);
+      }
+      else {
+	pushByte(machine, op->BRA);
+	pushWord(machine, param->lbladdr);
+      }
+      break;
+    case ABS_X:
+      pushByte(machine, op->ABSX);
+      pushWord(machine, param->value[0]);
+      break;
+    case ABS_Y:
+      pushByte(machine, op->ABSY);
+      pushWord(machine, param->value[0]);
+      break;
+    case ABS_LABEL_X:
+      pushByte(machine, op->ABSX);
+      pushWord(machine, param->lbladdr);
+      break;
+    case ABS_LABEL_Y:
+      pushByte(machine, op->ABSY);
+      pushWord(machine, param->lbladdr);
+      break;
+   case DCB_PARAM:
+     /* Handled elsewhere */
+     break;
+   }
+   return True;
+}
+
 /* compileLine() - Compile one line of code. Returns
    true if it compile successfully. */
-Bool compileLine(AsmLine *asmline, machine_6502 *machine){
-/*   if (isBlank(asmline->command)) return True; */
+Bool compileLine(AsmLine *asmline, void *args){
+  machine_6502 *machine;
+  machine = args;
+  if (isBlank(asmline->command)) return True;
 
-/*   if (strcmp("DCB",asmline->command) == 0) */
-/*     return dcb(machine,""); /\* XXX: dcb *\/ */
-/*   else{ */
-/*     int i; */
-/*     char *command = asmline->command; */
-/*     Param param; */
-/*     parseParam(asmline->parameter,&param); */
-/*     fprintf(stderr,"value: %lx\n",param.value);/\*XXX: Debug*\/ */
-/*     for(i = 0; i < NUM_OPCODES; i++){ */
-/*       if (strcmp(machine->opcodes[i].name, command) == 0){ */
-
-/* 	if( checkSingle(    machine, &param, machine->opcodes[i].SNGL) ) return True; */
-/* 	if( checkImmediate( machine, &param, machine->opcodes[i].Imm ) ) return True; */
-/* 	if( checkZeroPage(  machine, &param, machine->opcodes[i].ZP  ) ) return True; */
-/* 	if( checkZeroPageX( machine, &param, machine->opcodes[i].ZPX ) ) return True; */
-/* 	if( checkZeroPageY( machine, &param, machine->opcodes[i].ZPY ) ) return True; */
-/* 	if( checkAbsoluteX( machine, &param, machine->opcodes[i].ABSX) ) return True; */
-/* 	if( checkAbsoluteY( machine, &param, machine->opcodes[i].ABSY) ) return True; */
-/* 	if( checkIndirectX( machine, &param, machine->opcodes[i].INDX) ) return True; */
-/* 	if( checkIndirectY( machine, &param, machine->opcodes[i].INDY) ) return True; */
-/* 	if( checkAbsolute(  machine, &param, machine->opcodes[i].ABS ) ) return True; */
-/* 	if( checkBranch(    machine, &param, machine->opcodes[i].BRA ) ) return True; */
-/*       } */
-/*     } */
-/*     return False; /\* unknow upcode *\/ */
-/*   } */
+  if (strcmp("DCB",asmline->command) == 0){
+    int i;
+    for(i = 0; i < asmline->param->vp; i++)
+      pushByte(machine, asmline->param->value[i]);
+  }    
+  else{
+    int i;
+    char *command = asmline->command;
+    Opcodes op;
+    for(i = 0; i < NUM_OPCODES; i++){
+      if (strcmp(machine->opcodes[i].name, command) == 0){
+	op = machine->opcodes[i];
+	break;      
+      }
+    }
+    if (i == NUM_OPCODES)
+      return False; /* unknow upcode */
+    else
+      return translate(&op,asmline->param,machine);
+  }
   return True;
 }
 
 
-/* indexLabels() - Pushes all labels onto the list */
-Bool indexLabels(AsmLine *asmline, machine_6502 *machine){
-  int thisPC = machine->regPC;
+/* indexLabels() - Get the address for each label */
+Bool indexLabels(AsmLine *asmline, void *arg){
+  machine_6502 *machine; 
+  int thisPC;
+  machine = arg;
+  thisPC = machine->regPC;
   /* Figure out how many bytes this instruction takes */
   machine->codeLen = 0;
   if ( ! compileLine(asmline, machine) ){
     return False;
   }
   machine->regPC += machine->codeLen;
-  if (! isBlank(asmline->label)) {
-
-    if ( !pushLabel(machine->labelIndex,asmline->label,thisPC) )
-      return False;
-
+  if (asmline->labelDecl) {
+    asmline->label->addr = thisPC;
   }
+   return True; 
+}
+
+Bool changeParamLabelAddr(AsmLine *asmline, void *label){
+  Label *la = label;
+  if (strcmp(asmline->param->label, la->label) == 0)
+    asmline->param->lbladdr = la->addr;
   return True;
 }
 
-/* compileCode() - Compile the current assembly code for the machine */
-Bool compileCode(machine_6502 *machine){
-
-/*   reset(machine); */
-/*   machine->codeCompiledOK = True; */
-/*   machine->regPC = 0x600; */
-
-/*   /\* First pass collect labels and index them *\/ */
-/*   tokenize(machine->source, machine->sourceLen, indexLabels, machine); */
-/*   { */
-/*     int labC = labelCount(machine->labelIndex); */
-/*     /\*    printf("Found %d label%s\n", labC, (labC > 1)? "s": ""); XXX*\/ */
-/*   } */
-/*   /\* fprintf(stdout,"Compiling code...\n"); XXX*\/ */
-
-/*   /\* Second pass translate the instructions *\/ */
-/*   machine->codeLen = 0; */
-/*   tokenize(machine->source, machine->sourceLen, compileLine, machine); */
-  
-/*   if (machine->codeLen == 0){ */
-/*     machine->codeCompiledOK = False; */
-/*     fprintf(stderr,"No Code to run.\n"); */
-/*   } */
-
-/*   if (machine->codeCompiledOK ) */
-/*     machine->memory[0x600+machine->codeLen] = 0x00; */
-/*   else */
-/*     return False; */
-
-  /* printf("Code compiled successfully, %d bytes.\n", machine->codeLen); XXX */
+Bool linkit(AsmLine *asmline, void *asmlist){
+  apply(asmlist,changeParamLabelAddr,asmline->label);
   return True;
+}
+
+/* linkLabels - Make sure all of the references to the labels contain
+   the right address*/
+void linkLabels(AsmLine *asmlist){
+  apply(asmlist,linkit,asmlist);
+}
+
+/* XXX: debug */
+Bool printAsmLine(AsmLine *asm,void *machine){
+ char *fmt = "labelDecl: %d\n" \
+   "label->addr: %d\n" \
+   "label->label: %s\n" \
+   "command: %s\n" \
+   "param->type: ";
+
+ char *fmt2 =  "\nparam->vp: %d\n" \
+   "param->label: %s\n" \
+   "param->addr: %d\n" \
+   "*next: %x\n\n\n";
+
+ int i;
+ fprintf(stderr,fmt,
+	 asm->labelDecl,asm->label->addr,
+	 asm->label->label, asm->command);	 
+
+ switch(asm->param->type){
+ case BLANK: fprintf(stderr,"BLANK\n"); break;
+ case IMMEDIATE_VALUE: fprintf(stderr,"IMMEDIATE_VALUE\n"); break;
+ case IMMEDIATE_GREAT: fprintf(stderr,"IMMEDIATE_GREAT\n"); break;
+ case IMMEDIATE_LESS: fprintf(stderr,"IMMEDIATE_LESS\n"); break;
+ case INDIRECT_X: fprintf(stderr,"INDIRECT_X\n"); break;
+ case INDIRECT_Y: fprintf(stderr,"INDIRECT_Y\n"); break;
+ case ZERO: fprintf(stderr,"ZERO\n"); break;
+ case ZERO_X: fprintf(stderr,"ZERO_X\n"); break;
+ case ZERO_Y: fprintf(stderr,"ZERO_Y\n"); break;
+ case ABS_VALUE: fprintf(stderr,"ABS_VALUE\n"); break;
+ case ABS_OR_BRANCH: fprintf(stderr,"ABS_OR_BRANCH\n"); break;
+ case ABS_X: fprintf(stderr,"ABS_X\n"); break;
+ case ABS_Y: fprintf(stderr,"ABS_Y\n"); break;
+ case ABS_LABEL_X: fprintf(stderr,"ABS_LABEL_X\n"); break;
+ case ABS_LABEL_Y: fprintf(stderr,"ABS_LABEL_Y\n"); break;
+ case DCB_PARAM: fprintf(stderr,"DCB_PARAM\n"); break;
+ }
+
+ for(i = 0; i < MAX_PARAM_VALUE; i++)
+   fprintf(stderr, "%s%lx,",(i==0)?"param->value: ":" ",asm->param->value[i]);
+ 
+ fprintf(stderr,fmt2,
+	 asm->param->vp, asm->param->label,
+	 asm->param->lbladdr,
+	 asm->next);
+ return True;
+}
+
+/* compileCode() - Compile the current assembly code for the machine */
+Bool compileCode(machine_6502 *machine, const char *code){
+  Bool codeOk;
+  AsmLine *asmlist;
+
+  reset(machine);
+  machine->regPC = 0x600;
+  asmlist = parseAssembly(machine, &codeOk, code);
+
+  if(codeOk){
+    /* First pass: Find the addresses for the labels */
+    apply(asmlist, indexLabels, machine);
+    /* update label references */
+    linkLabels(asmlist);
+    apply(asmlist, printAsmLine, machine);/*XXX: Debug*/
+    /* Second pass: translate the instructions */
+    apply(asmlist, compileLine, machine);
+
+    if (machine->codeLen > 0 ){
+      printf("Code compiled successfully, %d bytes.\n", machine->codeLen);
+      machine->memory[0x600+machine->codeLen] = 0x00;
+      return True;
+    }
+    else{
+      fprintf(stderr,"No Code to run.\n");
+      return False;
+    }
+  }
+  else{
+    fprintf(stderr,"An error occured while parsing the file.\n");  
+    return False;
+  }
 }
 
 machine_6502 *build6502(){
   machine_6502 *machine;
   machine = emalloc(sizeof(machine_6502));
-  machine->labelIndex = emalloc(sizeof(LabelList));
-  machine->labelIndex->head = NULL;
-  machine->source = NULL;
-  machine->sourceLen = 0;
+  /*  machine->labelIndex = emalloc(sizeof(LabelList));*/
+  /*  machine->labelIndex->head = NULL;*/
+  /*  machine->source = NULL;*/
+  /*  machine->sourceLen = 0;*/
   assignOpCodes(machine->opcodes);
   reset(machine);
   return machine;
 }
 
 void destroy6502(machine_6502 *machine){
-  free(machine->labelIndex);
-  machine->labelIndex = NULL;
-  if(machine->source != NULL){
-    free(machine->source);
-    machine->source = NULL;
-  }
+  /*  free(machine->labelIndex);*/
+  /*  machine->labelIndex = NULL;*/
+/*   if(machine->source != NULL){ */
+/*     free(machine->source); */
+/*     machine->source = NULL; */
+/*   } */
   free(machine);
   machine = NULL;
 }
 
 
 /* TEST CODE */
-void dumpLabelList(LabelList *labelList){
-  Label *ls = labelList->head;
-  printf("ADDR  | NAME\n");
-  while(ls != NULL){
-    printf("%.5ld | %s\n",ls->addr, ls->name);
-    ls = ls->next;
-  }
-}
+/* void dumpLabelList(LabelList *labelList){ */
+/*   Label *ls = labelList->head; */
+/*   printf("ADDR  | NAME\n"); */
+/*   while(ls != NULL){ */
+/*     printf("%.5ld | %s\n",ls->addr, ls->name); */
+/*     ls = ls->next; */
+/*   } */
+/* } */
 
 void dumpOpcodes(machine_6502 *machine){
   int i = 0;
@@ -1310,9 +1541,9 @@ void printPS(Bool b, Param *ps){
 
 }
 
+
 int main(int argc, char **argv){
   machine_6502 *machine = build6502();
-  Bool b;
   char *code;
 
   /*printf("Bit8 = %d, Bit16 = %d, Bit32 = %d\n", sizeof(Bit8), sizeof(Bit16), sizeof(Bit32));*/
@@ -1320,9 +1551,10 @@ int main(int argc, char **argv){
   if (argc == 1)
     eprintf("usage: assembler filename");
   else
-    code = fileToBuffer(argv[1], &(machine->sourceLen));
+    code = fileToBuffer(argv[1]);
   
-  parseAssembly(machine, code);
+  compileCode(machine, code);
+  hexDump(machine);
 
 /*   b = parseParam("#$0AF",&ps); */
 /*   printPS(b,&ps); */
