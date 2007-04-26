@@ -981,25 +981,32 @@ function testSBC( value ) {
 }
 
 function testADC( value ) {
+    //If both numbers have the 8th bit set set the carry
+    //flag. otherwise clear it.
   if( (regA ^ value) & 0x80 ) {
-    regP &= 0xbf;
+      regP &= 0xbf; //clear the carry flag
   } else {
-    regP |= 0x40;
+      regP |= 0x40; //set the carry flag
   }
 
+  //if Decimal
   if( regP & 8 ) {
+      //keep the lower four bits and add them with the carry bit
     tmp = (regA & 0xf) + (value & 0xf) + (regP&1);
     if( tmp >= 10 ) {
+        //if greater then or equal to 10, Set the 4th bit to one and keep the lower four bits.
       tmp = 0x10 | ((tmp+6)&0xf);
     }
+    //Add the upper four bits
     tmp += (regA & 0xf0) + (value & 0xf0);
     if( tmp >= 160) {
-      regP |= 1;
+        regP |= 1; //set the carry flag.
+        //if overflow is not set and tmp greater then 384 clear the overflow flag?
       if( (regP&0xbf) && tmp >= 0x180 ) regP &= 0xbf;
       tmp += 0x60;
     } else {
-      regP &= 0xfe;
-      if( (regP&0xbf) && tmp<0x80 ) regP &= 0xbf;
+        regP &= 0xfe; //clear the carry flag.
+        if( (regP&0xbf) && tmp<0x80 ) regP &= 0xbf;
     }
   } else {
     tmp = regA + value + (regP&1);
@@ -1012,7 +1019,9 @@ function testADC( value ) {
     }
   }
   regA = tmp;
+  //if regA is zero set the zero flag else clear it
   if( regA ) regP &= 0xfd; else regP |= 0x02;
+  //if bit 8 is on set the negative flag else clear negative flag
   if( regA & 0x80 ) regP |= 0x80; else regP &= 0x7f;
 }
 
