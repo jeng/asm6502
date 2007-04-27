@@ -19,6 +19,8 @@
       I changed the structure of the assembler in this version.
 */
 
+/* #define NDEBUG */ /* Uncomment when done with debugging */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <malloc.h>
@@ -29,6 +31,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdint.h>
+#include <unistd.h>
 #include "memwatch.h"
 
 enum {
@@ -57,6 +60,13 @@ typedef enum{
 typedef enum{
   LEFT, RIGHT
     } Side;
+
+typedef enum{
+      CARRY_FL = 0, ZERO_FL = 1, INTERRUPT_FL = 2, 
+	DECIMAL_FL = 3, BREAK_FL = 4, FUTURE_FL = 5,
+	OVERFLOW_FL = 6, NEGATIVE_FL = 7
+	} Flags;
+	
 
 typedef Bool (*CharTest) (char);
 
@@ -109,23 +119,12 @@ struct AsmLine {
   AsmLine *next; /* in list */
 };
 
-typedef struct {
-  Bit8 negative:1;
-  Bit8 overflow:1;
-  Bit8 futureuse:1;
-  Bit8 branch:1;
-  Bit8 decimal:1;
-  Bit8 interrupt:1;
-  Bit8 zero:1;
-  Bit8 carry:1;
-} FLAGS;
-
 struct machine_6502 {
   Bool codeCompiledOK;
   Bit8 regA;
   Bit8 regX;
   Bit8 regY;
-  FLAGS regP;
+  Bit8 regP;
   Bit16 regPC; /* A pair of 8 bit registers */
   Bit8 regSP;
   Bit8 memory[MEM_64K];
@@ -140,7 +139,7 @@ struct machine_6502 {
 
 typedef struct {
   Bit16 addr;
-  Bit8 value;
+  Bit16 value;
 } Pointer;
 
 /* eprintf - Taken from "Practice of Programming" by Kernighan and Pike */
@@ -285,8 +284,36 @@ int memReadByte( machine_6502 *machine, int addr ) {
 
 
 
-
 /* EMULATION CODE */
+
+Bit8 bitOn(Bit8 value,Flags bit){
+  Bit8 mask = 1;
+  mask = mask << bit;
+  return ((value & mask) > 0);
+}
+
+Bit8 bitOff(Bit8 value, Flags bit){
+  return (! bitOn(value,bit));
+}
+
+Bit8 setBit(Bit8 value, Flags bit, int on){
+  Bit8 onMask  = 1;
+  Bit8 offMask = 0xff;
+  onMask = onMask << bit;
+  offMask = offMask ^ onMask;
+  return ((on) ? value | onMask : value & offMask);
+}
+
+Bit8 nibble(Bit8 value, Side side){
+  switch(side){
+  case LEFT:  return value & 0xf0;
+  case RIGHT: return value & 0xf;
+  default:
+    fprintf(stderr,"nibble unknown side\n");
+    return 0;
+  }
+}
+
 
 /* Figure out how to get the value from the addrmode and get it.*/
 Bool getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
@@ -346,6 +373,12 @@ Bool getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
 
 }
 
+/* manZeroNeg - Manage the negative and zero flags */
+void manZeroNeg(machine_6502 *machine, Bit8 value){
+  machine->regP = setBit(machine->regP, ZERO_FL, (value == 0));
+  machine->regP = setBit(machine->regP, NEGATIVE_FL, bitOn(value,NEGATIVE_FL));
+}
+
 void jmpADC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
@@ -354,6 +387,9 @@ void jmpADC(machine_6502 *machine, AddrMode adm){
 void jmpAND(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  machine->regA &= ptr.value;
+  manZeroNeg(machine,machine->regA);
 }
 
 void jmpASL(machine_6502 *machine, AddrMode adm){
@@ -432,43 +468,40 @@ void jmpEOR(machine_6502 *machine, AddrMode adm){
 }
 
 void jmpCLC(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = setBit(machine->regP, CARRY_FL, 0);
 }
 
 void jmpSEC(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = setBit(machine->regP, CARRY_FL, 1);
 }
 
 void jmpCLI(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = setBit(machine->regP, INTERRUPT_FL, 0);
 }
 
 void jmpSEI(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = setBit(machine->regP, INTERRUPT_FL, 1);
 }
 
 void jmpCLV(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = setBit(machine->regP, OVERFLOW_FL, 0);
 }
 
 void jmpCLD(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = setBit(machine->regP, DECIMAL_FL, 0);
 }
 
 void jmpSED(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = setBit(machine->regP, DECIMAL_FL, 1);
 }
 
 void jmpINC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  ptr.value = (ptr.value + 1) % 0xFF;
+  memStoreByte(machine, ptr.addr, ptr.value);
+  manZeroNeg(machine,ptr.value);
 }
 
 void jmpJMP(machine_6502 *machine, AddrMode adm){
@@ -484,17 +517,25 @@ void jmpJSR(machine_6502 *machine, AddrMode adm){
 void jmpLDA(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
-   
+  assert(isValue);
+  machine->regA = ptr.value;
+  manZeroNeg(machine, machine->regA);
 }
 
 void jmpLDX(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  machine->regX = ptr.value;
+  manZeroNeg(machine, machine->regX);
 }
 
 void jmpLDY(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  machine->regY = ptr.value;
+  manZeroNeg(machine, machine->regY);
 }
 
 void jmpLSR(machine_6502 *machine, AddrMode adm){
@@ -528,8 +569,9 @@ void jmpDEX(machine_6502 *machine, AddrMode adm){
 }
 
 void jmpINX(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  Bit16 value = machine->regX + 1;
+  machine->regX = value & 0xFF;
+  manZeroNeg(machine, machine->regX);
 }
 
 void jmpTAY(machine_6502 *machine, AddrMode adm){
@@ -548,18 +590,59 @@ void jmpDEY(machine_6502 *machine, AddrMode adm){
 }
 
 void jmpINY(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  Bit16 value = machine->regY + 1;
+  machine->regY = value % 0xff;
+  manZeroNeg(machine, machine->regY);
 }
 
 void jmpROR(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
+  Bit8 cf;
   Bool isValue = getValue(machine, adm, &ptr);
+  if (isValue) { 
+    cf = bitOn(machine->regP, CARRY_FL);
+    machine->regP = 
+      setBit(machine->regP, CARRY_FL,
+	     bitOn(ptr.value, CARRY_FL));
+    ptr.value = ptr.value >> 1;
+    ptr.value = setBit(ptr.value, NEGATIVE_FL, cf);
+    memStoreByte(machine, ptr.addr, ptr.value);
+    manZeroNeg(machine, ptr.value);
+  }
+  else { /* Implied */
+    cf = bitOn(machine->regP, CARRY_FL);
+    machine->regP = 
+      setBit(machine->regP, CARRY_FL,
+	     bitOn(machine->regA, CARRY_FL));
+    machine->regA = machine->regA >> 1;
+    machine->regA = setBit(machine->regA, NEGATIVE_FL, cf);
+    manZeroNeg(machine, machine->regA);
+  }
 }
 
 void jmpROL(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
+  Bit8 cf;
   Bool isValue = getValue(machine, adm, &ptr);
+  if (isValue) { 
+    cf = bitOn(machine->regP, CARRY_FL);
+    machine->regP = 
+      setBit(machine->regP, CARRY_FL,
+	     bitOn(ptr.value, NEGATIVE_FL));
+    ptr.value = ptr.value << 1;
+    ptr.value = setBit(ptr.value, CARRY_FL, cf);
+    memStoreByte(machine, ptr.addr, ptr.value);
+    manZeroNeg(machine, ptr.value);
+  }
+  else { /* Implied */
+    cf = bitOn(machine->regP, CARRY_FL);
+    machine->regP = 
+      setBit(machine->regP, CARRY_FL,
+	     bitOn(machine->regA,NEGATIVE_FL));
+    machine->regA = machine->regA << 1;
+    machine->regA = setBit(machine->regA, CARRY_FL, cf);
+    manZeroNeg(machine, machine->regA);
+  }
 }
 
 void jmpRTI(machine_6502 *machine, AddrMode adm){
@@ -593,23 +676,21 @@ void jmpTSX(machine_6502 *machine, AddrMode adm){
 }
 
 void jmpPHA(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  stackPush(machine, machine->regA);
 }
 
 void jmpPLA(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regA = stackPop(machine);
+  manZeroNeg(machine, machine->regA);
 }
 
 void jmpPHP(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  stackPush(machine,machine->regP);
 }
 
 void jmpPLP(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = stackPop(machine);
+  machine->regP = setBit(machine->regP, FUTURE_FL, 1);
 }
 
 void jmpSTX(machine_6502 *machine, AddrMode adm){
@@ -1345,7 +1426,7 @@ void reset(machine_6502 *machine){
   machine->regA = 0;
   machine->regX = 0;
   machine->regY = 0;
-  machine->regP.futureuse = True;
+  machine->regP = setBit(machine->regP, FUTURE_FL, 1);
   machine->regPC = 0x600; 
   machine->regSP = 0xff; /* was 100, of by one? */
   machine->runForever = False;
@@ -1370,7 +1451,12 @@ void hexDump(machine_6502 *machine){
 Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
    switch(param->type){
     case SINGLE:
-      pushByte(machine, op->SNGL);
+      if (op->SNGL)
+	pushByte(machine, op->SNGL);
+      else {
+	fprintf(stderr,"%s needs a parameter.\n",op->name);
+	return False;
+      }
       break;
     case IMMEDIATE_VALUE:
       pushByte(machine, op->Imm);
@@ -1570,13 +1656,15 @@ Bool compileCode(machine_6502 *machine, const char *code){
 
   if(codeOk){
     /* First pass: Find the addresses for the labels */
-    apply(asmlist, indexLabels, machine);
+    if (!apply(asmlist, indexLabels, machine))
+      return False;
     /* update label references */
     linkLabels(asmlist);
     /*    apply(asmlist, printAsmLine, machine);*//*XXX: Debug*/
     /* Second pass: translate the instructions */
     machine->codeLen = 0;
-    apply(asmlist, compileLine, machine);
+    if (!apply(asmlist, compileLine, machine))
+      return False;
 
     if (machine->codeLen > 0 ){
       /*      printf("Code compiled successfully, %d bytes.\n", machine->codeLen); XXX*/
@@ -1613,42 +1701,6 @@ void jumpBranch(machine_6502 *machine, Bit16 offset ) {
     machine->regPC = (machine->regPC + offset );
 }
 
-/* bits will be passed to the command as 1-8. This function makes
-   shure that is the case. */
-Bit8 adjBit(Bit8 bit){
-  if (bit) bit = (bit - 1) % 8;
-  return bit;
-}
-
-Bit8 bitOn(Bit8 value,Bit8 bit){
-  Bit8 mask = 1;
-  bit = adjBit(bit);
-  mask = mask << bit;
-  return ((value & mask) > 0);
-}
-
-Bit8 bitOff(Bit8 value, Bit8 bit){
-  return (! bitOn(value,bit));
-}
-
-Bit8 setBit(Bit8 value, int on, Bit8 bit){
-  Bit8 onMask  = 1;
-  Bit8 offMask = 0xff;
-  bit = adjBit(bit);
-  onMask = onMask << bit;
-  offMask = offMask ^ onMask;
-  return ((on) ? value | onMask : value & offMask);
-}
-
-Bit8 nibble(Bit8 value, Side side){
-  switch(side){
-  case LEFT:  return value & 0xf0;
-  case RIGHT: return value & 0xf;
-  default:
-    fprintf(stderr,"nibble unknown side\n");
-    return 0;
-  }
-}
 
 Bit8 add8bit(Bit8 a, Bit8 b, Bit8 carry, Bool *overflow){
   Bit16 _a = a;
@@ -2672,6 +2724,21 @@ void destroy6502(machine_6502 *machine){
   machine = NULL;
 }
 
+void trace(machine_6502 *machine){
+  printf("\n      NVFBDIZC\nREGP: %d%d%d%d%d%d%d%d ",
+	 bitOn(machine->regP,NEGATIVE_FL),
+	 bitOn(machine->regP,OVERFLOW_FL),
+	 bitOn(machine->regP,FUTURE_FL),
+	 bitOn(machine->regP,BREAK_FL),
+	 bitOn(machine->regP,DECIMAL_FL),
+	 bitOn(machine->regP,INTERRUPT_FL),
+	 bitOn(machine->regP,ZERO_FL),
+	 bitOn(machine->regP,CARRY_FL));
+  printf("REGA: %.2x REGX: %.2x REGY: %.2x\n",
+	 machine->regA, machine->regX, machine->regY);
+}
+
+
 
 int main(int argc, char **argv){
   machine_6502 *machine = build6502();
@@ -2682,11 +2749,17 @@ int main(int argc, char **argv){
   else
     code = fileToBuffer(argv[1]);
   
-  compileCode(machine, code);
+  if (! compileCode(machine, code) ){
+    eprintf("Could not compile code.\n");
+  }
   hexDump(machine);
   machine->regPC = 0x600; /* XXX */
   machine->codeRunning = True; /* XXX */
-  execute(machine);
+  do{
+    sleep(0); /* XXX */
+    execute(machine);
+    trace(machine);
+  }while((machine->regPC - 0x600) < machine->codeLen);
   destroy6502(machine);
   return 0;
 }
