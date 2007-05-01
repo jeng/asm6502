@@ -39,9 +39,13 @@ enum {
   MAX_LINE_LENGTH = 256, /* Your insane if you have even close to 256 characters in a single line */
   MAX_LABEL_LEN = 80, 
   NUM_OPCODES = 56, /* Number of unique instructions not counting DCB */
-  MEM_64K = 77056, /* We have 64k of memory to work with. */
+  MEM_64K = 65536, /* We have 64k of memory to work with. */
   MAX_PARAM_VALUE = 25, /* The number of values allowed behind dcb */
-  MAX_CMD_LEN = 4 /* Each assembly command is 3 characeters long and we a place for the null character */
+  MAX_CMD_LEN = 4, /* Each assembly command is 3 characeters long and we a place for the null character */
+
+/* The stack works from the top down in page $100 to $166 */
+  STACK_TOP = 0x1ff,
+  STACK_BOTTOM = 0x100 
 };
 
 typedef enum  {
@@ -60,6 +64,17 @@ typedef enum{
 typedef enum{
   LEFT, RIGHT
     } Side;
+
+
+/* 
+
+Bit Flags
+   _  _  _  _  _  _  _  _ 
+  |N||V||F||B||D||I||Z||C|
+   -  -  -  -  -  -  -  - 
+   7  6  5  4  3  2  1  0
+
+*/
 
 typedef enum{
       CARRY_FL = 0, ZERO_FL = 1, INTERRUPT_FL = 2, 
@@ -126,7 +141,7 @@ struct machine_6502 {
   Bit8 regY;
   Bit8 regP;
   Bit16 regPC; /* A pair of 8 bit registers */
-  Bit8 regSP;
+  Bit16 regSP;
   Bit8 memory[MEM_64K];
   Bool runForever;
   int labelPtr;
@@ -204,8 +219,13 @@ void checkAddress(Bit32 address){
  */
 
 void stackPush(machine_6502 *machine, Bit8 value ) {
-    machine->regSP--;
-    machine->memory[machine->regSP + 0x100] = value;
+  if(machine->regSP >= STACK_BOTTOM){
+    machine->memory[machine->regSP--] = value;
+  }
+  else{
+    fprintf(stderr, "The stack is full: %.4x\n", machine->regSP);
+    machine->codeRunning = False;
+  }
 }
 
 
@@ -215,9 +235,15 @@ void stackPush(machine_6502 *machine, Bit8 value ) {
  */
 
 Bit8 stackPop(machine_6502 *machine) {
-  Bit8 value =machine->memory[machine->regSP+0x100];
-  machine->regSP++;
-  return value;
+  if (machine->regSP < STACK_TOP){
+    Bit8 value =machine->memory[++machine->regSP];
+    return value;
+  }
+  else {
+    fprintf(stderr, "The stack is empty.\n");
+    machine->codeRunning = False;
+    return 0;
+  }
 }
 
 void pushByte(machine_6502 *machine, Bit32 value ) {
@@ -315,9 +341,76 @@ Bit8 nibble(Bit8 value, Side side){
 }
 
 
+/* used for tracing. XXX combined with function below */
+Bool peekValue(machine_6502 *machine, AddrMode adm, Pointer *pointer, Bit16 PC){
+  Bit8 zp;
+  pointer->value = 0;
+  pointer->addr = 0;
+  switch(adm){
+  case SINGLE:
+    return False;
+  case IMMEDIATE_LESS:
+  case IMMEDIATE_GREAT:
+  case IMMEDIATE_VALUE:
+    pointer->value = memReadByte(machine, PC);
+    return True;
+  case INDIRECT_X:
+    zp = memReadByte(machine, PC);
+    pointer->addr = memReadByte(machine,zp) + 
+      (memReadByte(machine,zp+1)<<8) + machine->regX;
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case INDIRECT_Y:
+    zp = memReadByte(machine, PC);
+    pointer->addr = memReadByte(machine,zp) + 
+      (memReadByte(machine,zp+1)<<8) + machine->regY;
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case ZERO:
+    pointer->addr = memReadByte(machine, PC);
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case ZERO_X:
+    pointer->addr = memReadByte(machine, PC) + machine->regX;
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case ZERO_Y:
+    pointer->addr = memReadByte(machine, PC) + machine->regY;
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case ABS_OR_BRANCH:
+    pointer->addr = memReadByte(machine, PC);
+    return True;
+  case ABS_VALUE:
+    pointer->addr = memReadByte(machine, PC) + (memReadByte(machine, PC+1) << 8);
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case ABS_LABEL_X:
+  case ABS_X:
+    pointer->addr = (memReadByte(machine, PC) + 
+		     (memReadByte(machine, PC+1) << 8)) + machine->regX;
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case ABS_LABEL_Y:
+  case ABS_Y:
+    pointer->addr = (memReadByte(machine, PC) + 
+		     (memReadByte(machine, PC+1) << 8)) + machine->regY;
+    pointer->value = memReadByte(machine, pointer->addr);
+    return True;
+  case DCB_PARAM:
+    /* Handled elsewhere */
+    break;
+  }
+  return False;
+
+}
+
+
 /* Figure out how to get the value from the addrmode and get it.*/
 Bool getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
   Bit8 zp;
+  pointer->value = 0;
+  pointer->addr = 0;
   switch(adm){
   case SINGLE:
     return False;
@@ -351,6 +444,8 @@ Bool getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
     pointer->value = memReadByte(machine, pointer->addr);
     return True;
   case ABS_OR_BRANCH:
+    pointer->value = popByte(machine);
+    return True;
   case ABS_VALUE:
     pointer->addr = popWord(machine);
     pointer->value = memReadByte(machine, pointer->addr);
@@ -382,6 +477,7 @@ void manZeroNeg(machine_6502 *machine, Bit8 value){
 void jmpADC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
 }
 
 void jmpAND(machine_6502 *machine, AddrMode adm){
@@ -395,76 +491,146 @@ void jmpAND(machine_6502 *machine, AddrMode adm){
 void jmpASL(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  if (isValue){
+      machine->regP = setBit(machine->regP, CARRY_FL, bitOn(ptr.value, NEGATIVE_FL));
+      ptr.value = ptr.value << 1;
+      ptr.value = setBit(ptr.value, CARRY_FL, 0);
+      memStoreByte(machine, ptr.addr, ptr.value);
+      manZeroNeg(machine,ptr.value);
+  }
+  else { /* Accumulator */
+      machine->regP = setBit(machine->regP, CARRY_FL, bitOn(machine->regA, NEGATIVE_FL));
+      machine->regA = machine->regA << 1;
+      machine->regA = setBit(machine->regA, CARRY_FL, 0);
+      manZeroNeg(machine,machine->regA);
+  }  
+  
 }
 
 void jmpBIT(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  machine->regP = setBit(machine->regP, ZERO_FL, (ptr.value & machine->regA));
+  machine->regP = setBit(machine->regP, OVERFLOW_FL, bitOn(ptr.value, OVERFLOW_FL));
+  machine->regP = setBit(machine->regP, NEGATIVE_FL, bitOn(ptr.value, NEGATIVE_FL));
+  
+}
+
+void jumpBranch(machine_6502 *machine, Bit16 offset){
+  if ( offset > 0x7f )
+    machine->regPC = machine->regPC - (0x100 - offset);
+  else
+    machine->regPC = machine->regPC + offset;
 }
 
 void jmpBPL(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOff(machine->regP,NEGATIVE_FL))
+    jumpBranch(machine, ptr.addr);
+    
 }
 
 void jmpBMI(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOn(machine->regP,NEGATIVE_FL))
+    jumpBranch(machine, ptr.addr);
+
 }
 
 void jmpBVC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOff(machine->regP,OVERFLOW_FL))
+    jumpBranch(machine, ptr.addr);
 }
 
 void jmpBVS(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOn(machine->regP,OVERFLOW_FL))
+    jumpBranch(machine, ptr.addr);
 }
 
 void jmpBCC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOff(machine->regP,CARRY_FL))
+    jumpBranch(machine, ptr.addr);
 }
 
 void jmpBCS(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOn(machine->regP,CARRY_FL))
+    jumpBranch(machine, ptr.addr);
 }
 
 void jmpBNE(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOff(machine->regP, ZERO_FL))
+    jumpBranch(machine, ptr.addr);
 }
 
 void jmpBEQ(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  if (bitOn(machine->regP, ZERO_FL))
+    jumpBranch(machine, ptr.addr);
+}
+
+void doCompare(machine_6502 *machine, Bit16 reg, Pointer *ptr){
+  setBit(machine->regP,CARRY_FL, ((reg + ptr->value) > 0xff));
+  manZeroNeg(machine,(reg - ptr->value));
 }
 
 void jmpCMP(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  doCompare(machine,machine->regA,&ptr);
 }
 
 void jmpCPX(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  doCompare(machine,machine->regX,&ptr);
 }
 
 void jmpCPY(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  doCompare(machine,machine->regY,&ptr);
 }
 
 void jmpDEC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  ptr.value--;
+  memStoreByte(machine, ptr.addr, ptr.value % 0xFF);
+  manZeroNeg(machine,ptr.value);
 }
 
 void jmpEOR(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  machine->regA ^= ptr.value;
+  manZeroNeg(machine, machine->regA);
 }
 
 void jmpCLC(machine_6502 *machine, AddrMode adm){
@@ -507,11 +673,20 @@ void jmpINC(machine_6502 *machine, AddrMode adm){
 void jmpJMP(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  machine->regPC = ptr.addr;
 }
 
 void jmpJSR(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
+  /* Move past the 2 byte parameter. JSR is always followed by
+     absolute address. */
+  Bit16 currAddr = machine->regPC + 2;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  stackPush(machine, (currAddr >> 8) & 0xff);
+  stackPush(machine, currAddr & 0xff);
+  machine->regPC = ptr.addr;  
 }
 
 void jmpLDA(machine_6502 *machine, AddrMode adm){
@@ -541,31 +716,53 @@ void jmpLDY(machine_6502 *machine, AddrMode adm){
 void jmpLSR(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  if (isValue){
+    machine->regP = 
+      setBit(machine->regP, CARRY_FL, 
+	     bitOn(ptr.value, CARRY_FL));
+    ptr.value = ptr.value >> 1;
+    setBit(ptr.value,NEGATIVE_FL,0);
+    memStoreByte(machine,ptr.addr,ptr.value);
+    manZeroNeg(machine,ptr.value);
+  }
+  else { /* Accumulator */
+    machine->regP = 
+      setBit(machine->regP, CARRY_FL, 
+	     bitOn(machine->regA, CARRY_FL));
+    machine->regA = machine->regA >> 1;
+    setBit(machine->regA,NEGATIVE_FL,0);
+    manZeroNeg(machine,ptr.value);
+  }
 }
 
 void jmpNOP(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  /* no operation */
 }
 
 void jmpORA(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  machine->regA |= ptr.value;
+  manZeroNeg(machine,machine->regA);
 }
 
 void jmpTAX(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regX = machine->regA;
+  manZeroNeg(machine,machine->regX);
 }
 
 void jmpTXA(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regA = machine->regX;
+  manZeroNeg(machine,machine->regA);
 }
 
 void jmpDEX(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  if (machine->regX > 0)
+    machine->regX--;
+  else
+    machine->regX = 0xFF;
+  manZeroNeg(machine, machine->regX);
 }
 
 void jmpINX(machine_6502 *machine, AddrMode adm){
@@ -575,23 +772,26 @@ void jmpINX(machine_6502 *machine, AddrMode adm){
 }
 
 void jmpTAY(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regY = machine->regA;
+  manZeroNeg(machine, machine->regY);
 }
 
 void jmpTYA(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regA = machine->regY;
+  manZeroNeg(machine, machine->regA);
 }
 
 void jmpDEY(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  if (machine->regY > 0)
+    machine->regY--;
+  else
+    machine->regY = 0xFF;
+  manZeroNeg(machine, machine->regY);
 }
 
 void jmpINY(machine_6502 *machine, AddrMode adm){
   Bit16 value = machine->regY + 1;
-  machine->regY = value % 0xff;
+  machine->regY = value & 0xff;
   manZeroNeg(machine, machine->regY);
 }
 
@@ -646,33 +846,39 @@ void jmpROL(machine_6502 *machine, AddrMode adm){
 }
 
 void jmpRTI(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regP = stackPop(machine);
+  machine->regPC = stackPop(machine);
 }
 
 void jmpRTS(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  Bit16 nr = stackPop(machine);
+  Bit16 nl = stackPop(machine);
+  assert(! isValue);
+  machine->regPC = (nl << 8) | nr;
 }
 
 void jmpSBC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
 }
 
 void jmpSTA(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  memStoreByte(machine,ptr.addr,machine->regA);
 }
 
 void jmpTXS(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  stackPush(machine,machine->regX);
 }
 
 void jmpTSX(machine_6502 *machine, AddrMode adm){
-  Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  machine->regX = stackPop(machine);
+  manZeroNeg(machine, machine->regX);
 }
 
 void jmpPHA(machine_6502 *machine, AddrMode adm){
@@ -696,11 +902,15 @@ void jmpPLP(machine_6502 *machine, AddrMode adm){
 void jmpSTX(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  memStoreByte(machine,ptr.addr,machine->regX);
 }
 
 void jmpSTY(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
+  assert(isValue);
+  memStoreByte(machine,ptr.addr,machine->regY);
 }
 
 
@@ -1428,24 +1638,24 @@ void reset(machine_6502 *machine){
   machine->regY = 0;
   machine->regP = setBit(machine->regP, FUTURE_FL, 1);
   machine->regPC = 0x600; 
-  machine->regSP = 0xff; /* was 100, of by one? */
+  machine->regSP = STACK_TOP;
   machine->runForever = False;
   machine->labelPtr = 0;
   machine->codeRunning = False;
 }
 
 /* hexDump() - Dump the memory to stdout */
-void hexDump(machine_6502 *machine){
+void hexDump(machine_6502 *machine, Bit16 start, Bit16 numbytes){
   Bit32 address;
   Bit32 i;
-  for( i = 0; i < machine->codeLen; i++){
-    address = 0x600 + i;
+  for( i = 0; i < numbytes; i++){
+    address = start + i;
     if ( (i&15) == 0 ) {
       printf("\n%.4lx: ", address);
     }
     printf("%.2x%s",machine->memory[address], (i & 1) ? " ":"");
   }
-  if ( i&1 ) printf("-- [END]\n");
+  printf("%s\n",(i&1)?"--":"");
 }
 
 Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
@@ -1686,20 +1896,6 @@ Bool compileCode(machine_6502 *machine, const char *code){
 
 
 /* Emulator */
-
-void jumpBranch(machine_6502 *machine, Bit16 offset ) {
-/*
-  if( offset >= 0x80 ) {
-    regPC -= 0x100-offset;
-  } else {
-    regPC += offset;
-  }
-*/
-  if( offset > 0x7f )
-    machine->regPC = (machine->regPC - (0x100 - offset));
-  else
-    machine->regPC = (machine->regPC + offset );
-}
 
 
 Bit8 add8bit(Bit8 a, Bit8 b, Bit8 carry, Bool *overflow){
@@ -2725,7 +2921,13 @@ void destroy6502(machine_6502 *machine){
 }
 
 void trace(machine_6502 *machine){
-  printf("\n      NVFBDIZC\nREGP: %d%d%d%d%d%d%d%d ",
+  Bit8 opcode = memReadByte(machine,machine->regPC);
+  AddrMode adm;
+  Pointer ptr;
+  int opidx = opIndex(machine,opcode,&adm);
+  int stacksz = STACK_TOP - machine->regSP;
+
+  printf("\n   NVFBDIZC\nP: %d%d%d%d%d%d%d%d ",
 	 bitOn(machine->regP,NEGATIVE_FL),
 	 bitOn(machine->regP,OVERFLOW_FL),
 	 bitOn(machine->regP,FUTURE_FL),
@@ -2734,8 +2936,20 @@ void trace(machine_6502 *machine){
 	 bitOn(machine->regP,INTERRUPT_FL),
 	 bitOn(machine->regP,ZERO_FL),
 	 bitOn(machine->regP,CARRY_FL));
-  printf("REGA: %.2x REGX: %.2x REGY: %.2x\n",
-	 machine->regA, machine->regX, machine->regY);
+  printf("A: %.2x X: %.2x Y: %.2x SP: %.4x PC: %.4x\n",
+	 machine->regA, machine->regX, machine->regY, machine->regSP, machine->regPC);
+  if (opidx > -1){
+    Bit16 pc = machine->regPC;
+    printf("\n%.4x:\t%s",machine->regPC, machine->opcodes[opidx].name);
+    if (peekValue(machine, adm, &ptr, pc+1))
+      printf("\tAddress:%.4x\tValue:%.4x\n",
+	     ptr.addr,ptr.value);
+    else
+      printf("\n");
+  }
+  printf("STACK:");
+  hexDump(machine,(STACK_TOP - stacksz) + 1, stacksz);
+  printf("\n================================================================================\n");
 }
 
 
@@ -2752,13 +2966,13 @@ int main(int argc, char **argv){
   if (! compileCode(machine, code) ){
     eprintf("Could not compile code.\n");
   }
-  hexDump(machine);
+  hexDump(machine,0x600,machine->codeLen);
   machine->regPC = 0x600; /* XXX */
   machine->codeRunning = True; /* XXX */
   do{
     sleep(0); /* XXX */
-    execute(machine);
     trace(machine);
+    execute(machine);
   }while((machine->regPC - 0x600) < machine->codeLen);
   destroy6502(machine);
   return 0;
