@@ -134,6 +134,13 @@ struct AsmLine {
   AsmLine *next; /* in list */
 };
 
+/* Used to cache the index of each opcode */
+typedef struct {
+  Bit8 index;
+  AddrMode adm;
+} OpcodeIndex;
+  
+
 struct machine_6502 {
   Bool codeCompiledOK;
   Bit8 regA;
@@ -150,6 +157,7 @@ struct machine_6502 {
   Opcodes opcodes[NUM_OPCODES];
   int screen[32][32];
   int codeLen;
+  OpcodeIndex opcache[0xff];
 };
 
 typedef struct {
@@ -1036,9 +1044,6 @@ void jmpSTY(machine_6502 *machine, AddrMode adm){
 }
 
 
-void setop(machine_6502 *machine, Bit8 idx, char *name, Bit8 imm, Bit8 zp,Bit8  zpx,Bit8  zpy,Bit8  abs,Bit8  absx,Bit8  absy,Bit8  indx,Bit8  indy,Bit8  sngl,Bit8  bra,   void (*func) (machine_6502*, AddrMode) ) {
-}
-
 
 /* OPCODES */
 void assignOpCodes(Opcodes *opcodes){
@@ -1110,61 +1115,63 @@ void assignOpCodes(Opcodes *opcodes){
   SETOP(55, "---", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, NULL);
 }
 
+void buildIndexCache(machine_6502 *machine){
+  unsigned int i;
+  for (i = 0; i < NUM_OPCODES; i++) {
+    if (machine->opcodes[i].Imm != 0x00){
+      machine->opcache[machine->opcodes[i].Imm].adm = IMMEDIATE_VALUE;
+      machine->opcache[machine->opcodes[i].Imm].index = i;
+    }
+    else if (machine->opcodes[i].ZP != 0x00){
+      machine->opcache[machine->opcodes[i].ZP].adm = ZERO;
+      machine->opcache[machine->opcodes[i].ZP].index = i;
+    }
+    else if (machine->opcodes[i].ZPX != 0x00){
+      machine->opcache[machine->opcodes[i].ZPX].adm = ZERO_X;
+      machine->opcache[machine->opcodes[i].ZPX].index = i;;
+    }
+    else if (machine->opcodes[i].ZPY != 0x00){
+      machine->opcache[machine->opcodes[i].ZPY].adm = ZERO_Y;
+      machine->opcache[machine->opcodes[i].ZPY].index = i;;
+    }
+    else if (machine->opcodes[i].ABS != 0x00){
+      machine->opcache[machine->opcodes[i].ABS].adm = ABS_VALUE;
+      machine->opcache[machine->opcodes[i].ABS].index = i;;
+    }
+    else if (machine->opcodes[i].ABSX != 0x00){
+      machine->opcache[machine->opcodes[i].ABSX].adm = ABS_X;
+      machine->opcache[machine->opcodes[i].ABSX].index = i;;
+    }
+    else if (machine->opcodes[i].ABSY != 0x00){
+      machine->opcache[machine->opcodes[i].ABSY].adm = ABS_Y;
+      machine->opcache[machine->opcodes[i].ABSY].index = i;;
+    }
+    else if (machine->opcodes[i].INDX != 0x00){
+      machine->opcache[machine->opcodes[i].INDX].adm = INDIRECT_X;
+      machine->opcache[machine->opcodes[i].INDX].index = i;;
+    }
+    else if (machine->opcodes[i].INDY != 0x00){
+      machine->opcache[machine->opcodes[i].INDY].adm = INDIRECT_Y;
+      machine->opcache[machine->opcodes[i].INDY].index = i;;
+    }
+    else if (machine->opcodes[i].SNGL != 0x00){
+      machine->opcache[machine->opcodes[i].SNGL].adm = SINGLE;
+      machine->opcache[machine->opcodes[i].SNGL].index = i;
+    }
+    else if (machine->opcodes[i].BRA != 0x00){
+      machine->opcache[machine->opcodes[i].BRA].adm = ABS_OR_BRANCH;
+      machine->opcache[machine->opcodes[i].BRA].index = i;
+    }
+  }   
+}
 
 /* opIndex() - Search the opcode table for a match. If found return
    the index into the optable and the address mode of the opcode. If
    the opcode is not found then return -1. */
 int opIndex(machine_6502 *machine, Bit8 opcode, AddrMode *adm){ 
-  unsigned int i;
-  if (opcode == 0x00) 
-    return -1;
-  for(i = 0; i < NUM_OPCODES; i++){
-    if (machine->opcodes[i].Imm == opcode){
-      *adm = IMMEDIATE_VALUE;
-      return i;
-    }
-    else if (machine->opcodes[i].ZP == opcode){
-      *adm = ZERO;
-      return i;
-    }
-    else if (machine->opcodes[i].ZPX == opcode){
-      *adm = ZERO_X;
-      return i;
-    }
-    else if (machine->opcodes[i].ZPY == opcode){
-      *adm = ZERO_Y;
-      return i;
-    }
-    else if (machine->opcodes[i].ABS == opcode){
-      *adm = ABS_VALUE;
-      return i;
-    }
-    else if (machine->opcodes[i].ABSX == opcode){
-      *adm = ABS_X;
-      return i;
-    }
-    else if (machine->opcodes[i].ABSY == opcode){
-      *adm = ABS_Y;
-      return i;
-    }
-    else if (machine->opcodes[i].INDX == opcode){
-      *adm = INDIRECT_X;
-      return i;
-    }
-    else if (machine->opcodes[i].INDY == opcode){
-      *adm = INDIRECT_Y;
-      return i;
-    }
-    else if (machine->opcodes[i].SNGL == opcode){
-      *adm = SINGLE;
-      return i;
-    }
-    else if (machine->opcodes[i].BRA == opcode){
-      *adm = ABS_OR_BRANCH;
-      return i;
-    }
-  }   
-  return -1;
+  /* XXX could catch errors by setting a addressmode of error or something */
+  *adm = machine->opcache[opcode].adm;
+  return machine->opcache[opcode].index;
 }
 
 
@@ -2007,6 +2014,7 @@ machine_6502 *build6502(){
   machine_6502 *machine;
   machine = emalloc(sizeof(machine_6502));
   assignOpCodes(machine->opcodes);
+  buildIndexCache(machine);
   reset(machine);
   return machine;
 }
