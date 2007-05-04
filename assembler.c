@@ -1122,43 +1122,43 @@ void buildIndexCache(machine_6502 *machine){
       machine->opcache[machine->opcodes[i].Imm].adm = IMMEDIATE_VALUE;
       machine->opcache[machine->opcodes[i].Imm].index = i;
     }
-    else if (machine->opcodes[i].ZP != 0x00){
+     if (machine->opcodes[i].ZP != 0x00){
       machine->opcache[machine->opcodes[i].ZP].adm = ZERO;
       machine->opcache[machine->opcodes[i].ZP].index = i;
     }
-    else if (machine->opcodes[i].ZPX != 0x00){
+     if (machine->opcodes[i].ZPX != 0x00){
       machine->opcache[machine->opcodes[i].ZPX].adm = ZERO_X;
       machine->opcache[machine->opcodes[i].ZPX].index = i;;
     }
-    else if (machine->opcodes[i].ZPY != 0x00){
+     if (machine->opcodes[i].ZPY != 0x00){
       machine->opcache[machine->opcodes[i].ZPY].adm = ZERO_Y;
       machine->opcache[machine->opcodes[i].ZPY].index = i;;
     }
-    else if (machine->opcodes[i].ABS != 0x00){
+     if (machine->opcodes[i].ABS != 0x00){
       machine->opcache[machine->opcodes[i].ABS].adm = ABS_VALUE;
       machine->opcache[machine->opcodes[i].ABS].index = i;;
     }
-    else if (machine->opcodes[i].ABSX != 0x00){
+     if (machine->opcodes[i].ABSX != 0x00){
       machine->opcache[machine->opcodes[i].ABSX].adm = ABS_X;
       machine->opcache[machine->opcodes[i].ABSX].index = i;;
     }
-    else if (machine->opcodes[i].ABSY != 0x00){
+     if (machine->opcodes[i].ABSY != 0x00){
       machine->opcache[machine->opcodes[i].ABSY].adm = ABS_Y;
       machine->opcache[machine->opcodes[i].ABSY].index = i;;
     }
-    else if (machine->opcodes[i].INDX != 0x00){
+     if (machine->opcodes[i].INDX != 0x00){
       machine->opcache[machine->opcodes[i].INDX].adm = INDIRECT_X;
       machine->opcache[machine->opcodes[i].INDX].index = i;;
     }
-    else if (machine->opcodes[i].INDY != 0x00){
+     if (machine->opcodes[i].INDY != 0x00){
       machine->opcache[machine->opcodes[i].INDY].adm = INDIRECT_Y;
       machine->opcache[machine->opcodes[i].INDY].index = i;;
     }
-    else if (machine->opcodes[i].SNGL != 0x00){
+     if (machine->opcodes[i].SNGL != 0x00){
       machine->opcache[machine->opcodes[i].SNGL].adm = SINGLE;
       machine->opcache[machine->opcodes[i].SNGL].index = i;
     }
-    else if (machine->opcodes[i].BRA != 0x00){
+     if (machine->opcodes[i].BRA != 0x00){
       machine->opcache[machine->opcodes[i].BRA].adm = ABS_OR_BRANCH;
       machine->opcache[machine->opcodes[i].BRA].index = i;
     }
