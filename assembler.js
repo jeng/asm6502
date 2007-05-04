@@ -941,12 +941,15 @@ function doCompare( reg, val ) {
 }
 
 function testSBC( value ) {
+    //if both are negative set the vflag
   if( (regA ^ value ) & 0x80 )
     vflag = 1;
   else
     vflag = 0;
 
+  //if decimal
   if( regP & 8 ) {
+      //add 15 to the difference of the right nibbles plus the carry
     tmp = 0xf + (regA & 0xf) - (value & 0xf) + (regP&1);
     if( tmp < 0x10 ) {
       w = 0;
@@ -957,6 +960,7 @@ function testSBC( value ) {
     }
     w += 0xf0 + (regA & 0xf0) - (value & 0xf0);
     if( w < 0x100 ) {
+        //clear carry flag
       regP &= 0xfe;
       if( (regP&0xbf) && w<0x80) regP&=0xbf;
       w -= 0x60;
@@ -1002,8 +1006,8 @@ function testADC( value ) {
     if( tmp >= 160) {
         regP |= 1; //set the carry flag.
         //if overflow is not set and tmp greater then 384 clear the overflow flag?
-      if( (regP&0xbf) && tmp >= 0x180 ) regP &= 0xbf;
-      tmp += 0x60;
+        if( (regP&0xbf) && tmp >= 0x180 ) regP &= 0xbf;
+        tmp += 0x60;
     } else {
         regP &= 0xfe; //clear the carry flag.
         if( (regP&0xbf) && tmp<0x80 ) regP &= 0xbf;
