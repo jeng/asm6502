@@ -10,18 +10,18 @@ PCC = gcc $(PROFILE) $(LK)
 #compiler settings used with valgrind
 VALGR = $(DEBUG) -O $(LK)
 
-assembler: assembler.c 
-	$(CC) -o assembler assembler.c $(DEBUG) $(LK)
+assembler: asm6502.c 
+	$(CC) -o assembler assembler.c asm6502.c $(DEBUG) $(LK)
 
-assemblerExpand: assembler.c 
-	$(CC) -E -o assembler.txt assembler.c
+assemblerExpand: asm6502.c 
+	$(CC) -E -o asm6502.txt asm6502.c
 
-assemblerProf: assembler.c
-	$(PCC) -o assembler assembler.c
+assemblerProf: asm6502.c
+	$(PCC) -o asm6502 asm6502.c
 
-assemblerMem: assembler.c
-	$(CC)  assembler.c $(VALGR) -o assembler
+assemblerMem: asm6502.c
+	$(CC)  asm6502.c $(VALGR) -o asm6502
 
 clean:
 	rm *.o
-	rm assembler
+	rm asm6502
