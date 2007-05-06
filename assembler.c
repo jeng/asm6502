@@ -32,17 +32,13 @@
 #include <math.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "memwatch.h"
 
 enum {
-  MAX_MEM = 1023,
-  MAX_LINE_LENGTH = 256, /* Your insane if you have even close to 256 characters in a single line */
   MAX_LABEL_LEN = 80, 
   NUM_OPCODES = 56, /* Number of unique instructions not counting DCB */
   MEM_64K = 65536, /* We have 64k of memory to work with. */
   MAX_PARAM_VALUE = 25, /* The number of values allowed behind dcb */
-  MAX_CMD_LEN = 4, /* Each assembly command is 3 characeters long and we a place for the null character */
-
+  MAX_CMD_LEN = 4, /* Each assembly command is 3 characeters long */
 /* The stack works from the top down in page $100 to $166 */
   STACK_TOP = 0x1ff,
   STACK_BOTTOM = 0x100 
@@ -2061,7 +2057,7 @@ void trace(machine_6502 *machine){
 
 int main(int argc, char **argv){
   machine_6502 *machine = build6502();
-  char *code;
+  char *code = NULL;
   int i= 0; /* XXX */
 
   if (argc == 1)
@@ -2072,6 +2068,7 @@ int main(int argc, char **argv){
   if (! compileCode(machine, code) ){
     eprintf("Could not compile code.\n");
   }
+  free(code);
 
   /*  hexDump(machine,0x600,machine->codeLen); */
   clearDisplay(); /* XXX */
