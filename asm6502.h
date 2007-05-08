@@ -69,8 +69,12 @@ typedef struct {
    13 lime       #aaff66
    14 light blue #0088ff
    15 gray       #bbbbbb
+
+   The plotter state variable of the machine gets passed as the forth
+   parameter. You can use this parameter to store state information.
+
 */
-typedef void (*Plotter) (Bit8, Bit8, Bit8);
+typedef void (*Plotter) (Bit8, Bit8, Bit8, void*);
 
 struct machine_6502 {
   Bool codeCompiledOK;
@@ -90,11 +94,17 @@ struct machine_6502 {
   int codeLen;
   OpcodeIndex opcache[0xff];
   Plotter plot;
+  void *plotterState;
 };
 
-machine_6502 *build6502();
+machine_6502 *build6502(void);
 void destroy6502(machine_6502 *machine);
-void evalFile(machine_6502 *machine, char *filename, Plotter plot);
+/* compile the file and exectue it until the program is finished */
+void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState);
+/* compile the file and execute the first instruction */
+void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState);
+/* execute the next insno machine instructions */
+void next_eval(machine_6502 *machine, int insno);
 /* void hexDump(machine_6502 *machine); XXX */
 
 #endif /* __ASM6502_H__ */

@@ -237,7 +237,7 @@ static void updateDisplayPixel(machine_6502 *machine, Bit16 addr){
   addr -= 0x200;
   x = addr & 0x1f;
   y = (addr >> 5);
-  machine->plot(x,y,idx);
+  machine->plot(x,y,idx,machine->plotterState);
 }
 
 /*
@@ -609,8 +609,11 @@ static void jmpDEC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
   assert(isValue);
-  ptr.value--;
-  memStoreByte(machine, ptr.addr, ptr.value % 0xFF);
+  if (ptr.value > 0)
+    ptr.value--;
+  else
+    ptr.value = 0xFF;
+  memStoreByte(machine, ptr.addr, ptr.value);
   manZeroNeg(machine,ptr.value);
 }
 
@@ -654,7 +657,7 @@ static void jmpINC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bool isValue = getValue(machine, adm, &ptr);
   assert(isValue);
-  ptr.value = (ptr.value + 1) % 0xFF;
+  ptr.value = (ptr.value + 1) & 0xFF;
   memStoreByte(machine, ptr.addr, ptr.value);
   manZeroNeg(machine,ptr.value);
 }
@@ -1077,18 +1080,16 @@ static void buildIndexCache(machine_6502 *machine){
 /* opIndex() - Search the opcode table for a match. If found return
    the index into the optable and the address mode of the opcode. If
    the opcode is not found then return -1. */
-int opIndex(machine_6502 *machine, Bit8 opcode, AddrMode *adm){ 
+static int opIndex(machine_6502 *machine, Bit8 opcode, AddrMode *adm){ 
   /* XXX could catch errors by setting a addressmode of error or something */
   *adm = machine->opcache[opcode].adm;
   return machine->opcache[opcode].index;
 }
 
 
-/* 
- ** Assembly parser
- */
+/* Assembly parser */
 
-Param *newParam(){
+static Param *newParam(void){
   Param *newp;
   int i = 0;
 
@@ -1112,7 +1113,7 @@ static void copyParam(Param *p1, Param *p2){
   p1->type = p2->type;
 }
 
-Label *newLabel(){
+static Label *newLabel(void){
   Label *newp; 
 
   newp = (Label *) emalloc(sizeof(Label));
@@ -1615,7 +1616,7 @@ static AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *c
 }
     
 /* fileToBuffer() - Allocates a buffer and loads all of the file into memory. */
-char *fileToBuffer(char *filename){
+static char *fileToBuffer(char *filename){
   const int defaultSize = 1024;
   FILE *ifp;
   int c;
@@ -1652,9 +1653,7 @@ char *fileToBuffer(char *filename){
 }
 
 
-/**
- ** Machine code
- */
+/* Routines */
 
 /* reset() - Reset CPU and memory. */
 static void reset(machine_6502 *machine){
@@ -1963,10 +1962,12 @@ static void trace(machine_6502 *machine){
     
 
 
-void evalFile(machine_6502 *machine, char *filename, Plotter plot){
+void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState){
   char *code = NULL;
+  int i = 0;
   machine->plot = plot;
-  
+  machine->plotterState = plotterState;
+
   code = fileToBuffer(filename);
   
   if (! compileCode(machine, code) ){
@@ -1980,7 +1981,40 @@ void evalFile(machine_6502 *machine, char *filename, Plotter plot){
   do{
     sleep(0); /* XXX */
     execute(machine);
+    if (i++ > 100000)
+      machine->codeRunning = False;
+
     if (!machine->codeRunning) 
       break;
   }while((machine->regPC - 0x600) < machine->codeLen);
 }
+
+void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState){
+  char *code = NULL;
+  int i = 0;
+  machine->plot = plot;
+  machine->plotterState = plotterState;
+
+  code = fileToBuffer(filename);
+  
+  if (! compileCode(machine, code) ){
+    eprintf("Could not compile code.\n");
+  }
+
+  free(code);
+
+  machine->regPC = 0x600;
+  machine->codeRunning = True;
+  execute(machine);
+}
+
+void next_eval(machine_6502 *machine, int insno){
+  int i = 0;
+  for (i = 1; i < insno; i++){
+    if (machine->codeRunning && ((machine->regPC - 0x600) < machine->codeLen))
+      execute(machine);
+    else
+      break;
+  }
+}
+  
