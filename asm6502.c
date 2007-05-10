@@ -1980,10 +1980,10 @@ void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotte
   machine->codeRunning = True;
   do{
     sleep(0); /* XXX */
+#if 0
+    trace(machine);
+#endif
     execute(machine);
-    if (i++ > 100000)
-      machine->codeRunning = False;
-
     if (!machine->codeRunning) 
       break;
   }while((machine->regPC - 0x600) < machine->codeLen);
@@ -2011,8 +2011,12 @@ void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *
 void next_eval(machine_6502 *machine, int insno){
   int i = 0;
   for (i = 1; i < insno; i++){
-    if (machine->codeRunning && ((machine->regPC - 0x600) < machine->codeLen))
+    if (machine->codeRunning){/* && ((machine->regPC - 0x600) < machine->codeLen))*/
+#if 0
+      trace(machine);
+#endif
       execute(machine);
+    }
     else
       break;
   }

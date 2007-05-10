@@ -29,9 +29,10 @@ void clearDisplay() {
   printf("%c[2J",0x1b);
 }
 
-void plot(Bit8 x, Bit8 y, Bit8 idx){
+void plot(Bit8 x, Bit8 y, Bit8 idx, void *p){
   char *colorTbl = "* /.-=[]|(&~#$+_";
   char c = *(colorTbl + idx);
+  fprintf(stderr,"OUTPUT: x %.3d, y %.3d idx %.3d\n", x, y, idx);
   x = x + 1;
   y = y + 1;
   printf("%c[%dC",0x1b,x);
@@ -49,8 +50,21 @@ int main(int argc, char **argv){
   clearDisplay();
   if (argc == 1)
     fprintf(stderr,"usage: assembler filename");
-  else
-    evalFile(machine,argv[1],plot);
+  else {
+#if 1
+    start_eval_file(machine,argv[1],plot,NULL);
+    
+    while (True) {
+      next_eval(machine,500);
+      sleep(1);
+      if (!machine->codeRunning) break;
+    }
+#else
+    eval_file(machine,argv[1],plot,NULL);
+#endif
+
+  }
+
   destroy6502(machine);
   return 0;
 }
