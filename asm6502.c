@@ -222,7 +222,7 @@ static int popWord(machine_6502 *machine) {
 
 
 /*
- * memStoreByte() - Peek a byte, don't touch any registers
+ * memReadByte() - Peek a byte, don't touch any registers
  *
  */
 
@@ -284,7 +284,7 @@ static Bit8 nibble(Bit8 value, Side side){
 }
 
 
-/* used for tracing. XXX combined with function below */
+/* used for tracing. XXX: combined with function getvalue */
 static Bool peekValue(machine_6502 *machine, AddrMode adm, Pointer *pointer, Bit16 PC){
   Bit8 zp;
   pointer->value = 0;
@@ -1704,72 +1704,156 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       break;
     case IMMEDIATE_VALUE:
-      pushByte(machine, op->Imm);
-      pushByte(machine, param->value[0]);
-      break;
+      if (op->Imm) {
+	pushByte(machine, op->Imm);
+	pushByte(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take IMMEDIATE_VALUE parameters.\n",op->name);
+	return False;
+      }
     case IMMEDIATE_GREAT:
-      pushByte(machine, op->Imm);
-      pushByte(machine, param->lbladdr / 0xFF);
-      break;
+      if (op->Imm) {
+	pushByte(machine, op->Imm);
+	pushByte(machine, param->lbladdr / 0xFF);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take IMMEDIATE_GREAT parameters.\n",op->name);
+	return False;
+      }
     case IMMEDIATE_LESS:
-      pushByte(machine, op->Imm);
-      pushByte(machine, param->lbladdr & 0xFF);
-      break;
+      if (op->Imm) {
+	pushByte(machine, op->Imm);
+	pushByte(machine, param->lbladdr & 0xFF);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take IMMEDIATE_LESS parameters.\n",op->name);
+	return False;
+      }
     case INDIRECT_X:
-      pushByte(machine, op->INDX);
-      pushByte(machine, param->value[0]);
-      break;
+      if (op->INDX) {
+	pushByte(machine, op->INDX);
+	pushByte(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take INDIRECT_X parameters.\n",op->name);
+	return False;
+      }
     case INDIRECT_Y:
-      pushByte(machine, op->INDY);
-      pushByte(machine, param->value[0]);
-      break;
+      if (op->INDY) {
+	pushByte(machine, op->INDY);
+	pushByte(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take INDIRECT_Y parameters.\n",op->name);
+	return False;
+      }
     case ZERO:
-      pushByte(machine, op->ZP);
-      pushByte(machine, param->value[0]);
-      break;
+      if (op->ZP) {
+	pushByte(machine, op->ZP);
+	pushByte(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ZERO parameters.\n",op->name);
+	return False;
+      }
     case ZERO_X:
-      pushByte(machine, op->ZPX);
-      pushByte(machine, param->value[0]);
-      break;
+      if (op->ZPX) {
+	pushByte(machine, op->ZPX);
+	pushByte(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ZERO_X parameters.\n",op->name);
+	return False;
+      }
     case ZERO_Y:
-      pushByte(machine, op->ZPY);
-      pushByte(machine, param->value[0]);
-      break;
+      if (op->ZPY) {
+	pushByte(machine, op->ZPY);
+	pushByte(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ZERO_Y parameters.\n",op->name);
+	return False;
+      }
     case ABS_VALUE:
-      pushByte(machine, op->ABS);
-      pushWord(machine, param->value[0]);
-      break;
+      if (op->ABS) {
+	pushByte(machine, op->ABS);
+	pushWord(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ABS_VALUE parameters.\n",op->name);
+	return False;
+      }
     case ABS_OR_BRANCH:
       if (op->ABS > 0){
 	pushByte(machine, op->ABS);
 	pushWord(machine, param->lbladdr);
       }
       else {
-	pushByte(machine, op->BRA);
-	if (param->lbladdr < (machine->codeLen + 0x600))  /*backwards?*/
-	  pushByte(machine,
-		   (0xff - (machine->codeLen-param->lbladdr)) & 0xff);
-	else
-	  pushByte(machine,
-		   (param->lbladdr - machine->codeLen-1) & 0xff);
+	if (op->BRA) {
+	  pushByte(machine, op->BRA);
+	  if (param->lbladdr < (machine->codeLen + 0x600))
+	    pushByte(machine,
+		     (0xff - (machine->codeLen-param->lbladdr)) & 0xff);
+	  else
+	    pushByte(machine,
+		     (param->lbladdr - machine->codeLen-1) & 0xff);
+	}
+	else {
+	  fprintf(stderr,"%s does not take BRANCH parameters.\n",op->BRA);
+	  return False;
+	}
       }
       break;
     case ABS_X:
-      pushByte(machine, op->ABSX);
-      pushWord(machine, param->value[0]);
-      break;
+      if (op->ABSX) {
+	pushByte(machine, op->ABSX);
+	pushWord(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ABS_X parameters.\n",op->name);
+	return False;
+      }
     case ABS_Y:
-      pushByte(machine, op->ABSY);
-      pushWord(machine, param->value[0]);
-      break;
+      if (op->ABSY) {
+	pushByte(machine, op->ABSY);
+	pushWord(machine, param->value[0]);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ABS_Y parameters.\n",op->name);
+	return False;
+      }
     case ABS_LABEL_X:
-      pushByte(machine, op->ABSX);
-      pushWord(machine, param->lbladdr);
-      break;
+      if (op->ABSX) {
+	pushByte(machine, op->ABSX);
+	pushWord(machine, param->lbladdr);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ABS_LABEL_X parameters.\n",op->name);
+	return False;
+      }
     case ABS_LABEL_Y:
-      pushByte(machine, op->ABSY);
-      pushWord(machine, param->lbladdr);
-      break;
+      if (op->ABSY) {
+	pushByte(machine, op->ABSY);
+	pushWord(machine, param->lbladdr);
+	break;
+      }
+      else {
+	fprintf(stderr,"%s does not take ABS_LABEL_Y parameters.\n",op->name);
+	return False;
+      }
    case DCB_PARAM:
      /* Handled elsewhere */
      break;
