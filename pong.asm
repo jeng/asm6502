@@ -1,3 +1,4 @@
+
 ; ping pong
 ; a = left
 ; d = right
@@ -200,7 +201,7 @@ notRight:
   lda #0
   sta $5e0,x
   inx
-  ldy #5
+  ldy #30
 drawPlayer:
   lda #15
   sta $5e0,x

@@ -15,7 +15,7 @@ start:
   jsr init
 
 loop:
-  jsr drawShip
+	;;   jsr drawShip			
   jsr drawMap
   jsr genMap
   jsr readKeys
@@ -24,8 +24,8 @@ loop:
 ;--
 
 drawShip:
-  lda $60
-  asl
+  lda $82 			; mychange
+;  asl				
   tay
 
   lda ypos,y
@@ -39,7 +39,8 @@ drawShip:
   cmp #0
   beq noCrash
   cmp #5
-  bne crashed
+;  bne crashed	
+;my changes
 noCrash:
   lda #5
   sta ($00,x)

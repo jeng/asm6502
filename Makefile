@@ -22,6 +22,9 @@ assemblerProf: asm6502.c
 assemblerMem: asm6502.c
 	$(CC)  asm6502.c $(VALGR) -o asm6502
 
+debugger: debug-6502.c
+	$(CC) -o debug-6502 debug-6502.c asm6502.c $(DEBUG) $(LK)
+
 clean:
 	rm *.o
 	rm asm6502

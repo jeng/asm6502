@@ -19,11 +19,11 @@
       I changed the structure of the assembler in this version.
 */
 
-/* #define NDEBUG */ /* Uncomment when done with debugging */
+#define NDEBUG  /* Uncomment when done with debugging */
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <malloc.h>
+/*#include <malloc.h>*/
 #include <string.h>
 #include <errno.h>
 #include <stdarg.h>
@@ -32,11 +32,6 @@
 #include <math.h>
 #include <stdint.h>
 #include <unistd.h>
-
-typedef enum  {
-  False = 0,
-  True = 1
-} Bool;
 
 #include "asm6502.h"
 
@@ -61,7 +56,7 @@ typedef enum{
 	} Flags;
 	
 
-typedef Bool (*CharTest) (char);
+typedef BOOL (*CharTest) (char);
 
 /* A jump function takes a pointer to the current machine and a
    opcode. The opcode is needed to figure out the memory mode. */
@@ -82,7 +77,7 @@ typedef struct {
 
 typedef struct AsmLine AsmLine;
 struct AsmLine {
-  Bool labelDecl; /* Does the line have a label declaration? */
+  BOOL labelDecl; /* Does the line have a label declaration? */
   Label *label;
   char *command;
   Param *param;
@@ -147,7 +142,7 @@ static char *estrdup(const char *source){
 static void checkAddress(Bit32 address){
   /* XXX: Do we want to kill the program here? */
   if (address >= MEM_64K)
-    eprintf("Address %d is beyond 64k", address);
+    fprintf(stderr, "Address %d is beyond 64k", address);
 }
 
 /*
@@ -161,7 +156,7 @@ static void stackPush(machine_6502 *machine, Bit8 value ) {
   }
   else{
     fprintf(stderr, "The stack is full: %.4x\n", machine->regSP);
-    machine->codeRunning = False;
+    machine->codeRunning = FALSE;
   }
 }
 
@@ -177,8 +172,8 @@ static Bit8 stackPop(machine_6502 *machine) {
     return value;
   }
   else {
-    fprintf(stderr, "The stack is empty.\n");
-    machine->codeRunning = False;
+    /*    fprintf(stderr, "The stack is empty.\n"); xxx */
+    machine->codeRunning = FALSE;
     return 0;
   }
 }
@@ -227,7 +222,7 @@ static int popWord(machine_6502 *machine) {
  */
 
 static int memReadByte( machine_6502 *machine, int addr ) {
-  if( addr == 0xfe ) return floor( rand()%255 );/*XXX: use random from other library*/
+  if( addr == 0xfe ) return floor( random()%255 );
   return machine->memory[addr];
 }
 
@@ -237,7 +232,9 @@ static void updateDisplayPixel(machine_6502 *machine, Bit16 addr){
   addr -= 0x200;
   x = addr & 0x1f;
   y = (addr >> 5);
-  machine->plot(x,y,idx,machine->plotterState);
+  if (machine->plot) {
+    machine->plot(x,y,idx,machine->plotterState);
+  }
 }
 
 /*
@@ -285,129 +282,129 @@ static Bit8 nibble(Bit8 value, Side side){
 
 
 /* used for tracing. XXX: combined with function getvalue */
-static Bool peekValue(machine_6502 *machine, AddrMode adm, Pointer *pointer, Bit16 PC){
+static BOOL peekValue(machine_6502 *machine, AddrMode adm, Pointer *pointer, Bit16 PC){
   Bit8 zp;
   pointer->value = 0;
   pointer->addr = 0;
   switch(adm){
   case SINGLE:
-    return False;
+    return FALSE;
   case IMMEDIATE_LESS:
   case IMMEDIATE_GREAT:
   case IMMEDIATE_VALUE:
     pointer->value = memReadByte(machine, PC);
-    return True;
+    return TRUE;
   case INDIRECT_X:
     zp = memReadByte(machine, PC);
     pointer->addr = memReadByte(machine,zp) + 
       (memReadByte(machine,zp+1)<<8) + machine->regX;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case INDIRECT_Y:
     zp = memReadByte(machine, PC);
     pointer->addr = memReadByte(machine,zp) + 
       (memReadByte(machine,zp+1)<<8) + machine->regY;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ZERO:
     pointer->addr = memReadByte(machine, PC);
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ZERO_X:
     pointer->addr = memReadByte(machine, PC) + machine->regX;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ZERO_Y:
     pointer->addr = memReadByte(machine, PC) + machine->regY;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ABS_OR_BRANCH:
     pointer->addr = memReadByte(machine, PC);
-    return True;
+    return TRUE;
   case ABS_VALUE:
     pointer->addr = memReadByte(machine, PC) + (memReadByte(machine, PC+1) << 8);
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ABS_LABEL_X:
   case ABS_X:
     pointer->addr = (memReadByte(machine, PC) + 
 		     (memReadByte(machine, PC+1) << 8)) + machine->regX;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ABS_LABEL_Y:
   case ABS_Y:
     pointer->addr = (memReadByte(machine, PC) + 
 		     (memReadByte(machine, PC+1) << 8)) + machine->regY;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case DCB_PARAM:
     /* Handled elsewhere */
     break;
   }
-  return False;
+  return FALSE;
 
 }
 
 
 /* Figure out how to get the value from the addrmode and get it.*/
-static Bool getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
+static BOOL getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
   Bit8 zp;
   pointer->value = 0;
   pointer->addr = 0;
   switch(adm){
   case SINGLE:
-    return False;
+    return FALSE;
   case IMMEDIATE_LESS:
   case IMMEDIATE_GREAT:
   case IMMEDIATE_VALUE:
     pointer->value = popByte(machine);
-    return True;
+    return TRUE;
   case INDIRECT_X:
     zp = popByte(machine);
     pointer->addr = memReadByte(machine,zp) + 
       (memReadByte(machine,zp+1)<<8) + machine->regX;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case INDIRECT_Y:
     zp = popByte(machine);
     pointer->addr = memReadByte(machine,zp) + 
       (memReadByte(machine,zp+1)<<8) + machine->regY;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ZERO:
     pointer->addr = popByte(machine);
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ZERO_X:
     pointer->addr = popByte(machine) + machine->regX;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ZERO_Y:
     pointer->addr = popByte(machine) + machine->regY;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ABS_OR_BRANCH:
     pointer->addr = popByte(machine);
-    return True;
+    return TRUE;
   case ABS_VALUE:
     pointer->addr = popWord(machine);
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ABS_LABEL_X:
   case ABS_X:
     pointer->addr = popWord(machine) + machine->regX;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case ABS_LABEL_Y:
   case ABS_Y:
     pointer->addr = popWord(machine) + machine->regY;
     pointer->value = memReadByte(machine, pointer->addr);
-    return True;
+    return TRUE;
   case DCB_PARAM:
     /* Handled elsewhere */
     break;
   }
-  return False;
+  return FALSE;
 
 }
 
@@ -417,13 +414,19 @@ static void manZeroNeg(machine_6502 *machine, Bit8 value){
   machine->regP = setBit(machine->regP, NEGATIVE_FL, bitOn(value,NEGATIVE_FL));
 }
 
+static void warnValue(BOOL isValue){
+  if (! isValue){
+    fprintf(stderr,"Invalid Value from getValue.\n");
+  }
+}
+
 static void jmpADC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bit16 tmp;
   Bit8 c = bitOn(machine->regP, CARRY_FL);
-  Bool isValue = getValue(machine, adm, &ptr);
+  BOOL isValue = getValue(machine, adm, &ptr);
 
-  assert(isValue);
+  warnValue(isValue);
   
   if (bitOn(machine->regA, NEGATIVE_FL) &&
       bitOn(ptr.value, NEGATIVE_FL))
@@ -431,7 +434,6 @@ static void jmpADC(machine_6502 *machine, AddrMode adm){
   else
     machine->regP = setBit(machine->regP, OVERFLOW_FL, 1);
 
-  /* XXX I don't really understand the decimal addition */
   if (bitOn(machine->regP, DECIMAL_FL)) {    
     tmp = nibble(machine->regA,RIGHT) + nibble(ptr.value,RIGHT ) + c;
     /* The decimal part is limited to 0 through 9 */
@@ -471,15 +473,15 @@ static void jmpADC(machine_6502 *machine, AddrMode adm){
 
 static void jmpAND(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regA &= ptr.value;
   manZeroNeg(machine,machine->regA);
 }
 
 static void jmpASL(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  BOOL isValue = getValue(machine, adm, &ptr);
   if (isValue){
       machine->regP = setBit(machine->regP, CARRY_FL, bitOn(ptr.value, NEGATIVE_FL));
       ptr.value = ptr.value << 1;
@@ -498,8 +500,8 @@ static void jmpASL(machine_6502 *machine, AddrMode adm){
 
 static void jmpBIT(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regP = setBit(machine->regP, ZERO_FL, (ptr.value & machine->regA));
   machine->regP = setBit(machine->regP, OVERFLOW_FL, bitOn(ptr.value, OVERFLOW_FL));
   machine->regP = setBit(machine->regP, NEGATIVE_FL, bitOn(ptr.value, NEGATIVE_FL));
@@ -515,8 +517,8 @@ static void jumpBranch(machine_6502 *machine, Bit16 offset){
 
 static void jmpBPL(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOff(machine->regP,NEGATIVE_FL))
     jumpBranch(machine, ptr.addr);
     
@@ -524,8 +526,8 @@ static void jmpBPL(machine_6502 *machine, AddrMode adm){
 
 static void jmpBMI(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOn(machine->regP,NEGATIVE_FL))
     jumpBranch(machine, ptr.addr);
 
@@ -533,48 +535,48 @@ static void jmpBMI(machine_6502 *machine, AddrMode adm){
 
 static void jmpBVC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOff(machine->regP,OVERFLOW_FL))
     jumpBranch(machine, ptr.addr);
 }
 
 static void jmpBVS(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOn(machine->regP,OVERFLOW_FL))
     jumpBranch(machine, ptr.addr);
 }
 
 static void jmpBCC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOff(machine->regP,CARRY_FL))
     jumpBranch(machine, ptr.addr);
 }
 
 static void jmpBCS(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOn(machine->regP,CARRY_FL))
     jumpBranch(machine, ptr.addr);
 }
 
 static void jmpBNE(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOff(machine->regP, ZERO_FL))
     jumpBranch(machine, ptr.addr);
 }
 
 static void jmpBEQ(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (bitOn(machine->regP, ZERO_FL))
     jumpBranch(machine, ptr.addr);
 }
@@ -586,29 +588,29 @@ static void doCompare(machine_6502 *machine, Bit16 reg, Pointer *ptr){
 
 static void jmpCMP(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   doCompare(machine,machine->regA,&ptr);
 }
 
 static void jmpCPX(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   doCompare(machine,machine->regX,&ptr);
 }
 
 static void jmpCPY(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   doCompare(machine,machine->regY,&ptr);
 }
 
 static void jmpDEC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   if (ptr.value > 0)
     ptr.value--;
   else
@@ -619,8 +621,8 @@ static void jmpDEC(machine_6502 *machine, AddrMode adm){
 
 static void jmpEOR(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regA ^= ptr.value;
   manZeroNeg(machine, machine->regA);
 }
@@ -655,8 +657,8 @@ static void jmpSED(machine_6502 *machine, AddrMode adm){
 
 static void jmpINC(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   ptr.value = (ptr.value + 1) & 0xFF;
   memStoreByte(machine, ptr.addr, ptr.value);
   manZeroNeg(machine,ptr.value);
@@ -664,8 +666,8 @@ static void jmpINC(machine_6502 *machine, AddrMode adm){
 
 static void jmpJMP(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regPC = ptr.addr;
 }
 
@@ -674,8 +676,8 @@ static void jmpJSR(machine_6502 *machine, AddrMode adm){
   /* Move past the 2 byte parameter. JSR is always followed by
      absolute address. */
   Bit16 currAddr = machine->regPC + 2;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   stackPush(machine, (currAddr >> 8) & 0xff);
   stackPush(machine, currAddr & 0xff);
   machine->regPC = ptr.addr;  
@@ -683,31 +685,31 @@ static void jmpJSR(machine_6502 *machine, AddrMode adm){
 
 static void jmpLDA(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regA = ptr.value;
   manZeroNeg(machine, machine->regA);
 }
 
 static void jmpLDX(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regX = ptr.value;
   manZeroNeg(machine, machine->regX);
 }
 
 static void jmpLDY(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regY = ptr.value;
   manZeroNeg(machine, machine->regY);
 }
 
 static void jmpLSR(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  BOOL isValue = getValue(machine, adm, &ptr);
   if (isValue){
     machine->regP = 
       setBit(machine->regP, CARRY_FL, 
@@ -733,8 +735,8 @@ static void jmpNOP(machine_6502 *machine, AddrMode adm){
 
 static void jmpORA(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   machine->regA |= ptr.value;
   manZeroNeg(machine,machine->regA);
 }
@@ -790,7 +792,7 @@ static void jmpINY(machine_6502 *machine, AddrMode adm){
 static void jmpROR(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bit8 cf;
-  Bool isValue = getValue(machine, adm, &ptr);
+  BOOL isValue = getValue(machine, adm, &ptr);
   if (isValue) { 
     cf = bitOn(machine->regP, CARRY_FL);
     machine->regP = 
@@ -815,7 +817,7 @@ static void jmpROR(machine_6502 *machine, AddrMode adm){
 static void jmpROL(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
   Bit8 cf;
-  Bool isValue = getValue(machine, adm, &ptr);
+  BOOL isValue = getValue(machine, adm, &ptr);
   if (isValue) { 
     cf = bitOn(machine->regP, CARRY_FL);
     machine->regP = 
@@ -844,10 +846,10 @@ static void jmpRTI(machine_6502 *machine, AddrMode adm){
 
 static void jmpRTS(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
+  BOOL isValue = getValue(machine, adm, &ptr);
   Bit16 nr = stackPop(machine);
   Bit16 nl = stackPop(machine);
-  assert(! isValue);
+  warnValue(! isValue);
   machine->regPC = (nl << 8) | nr;
 }
 
@@ -856,8 +858,8 @@ static void jmpSBC(machine_6502 *machine, AddrMode adm){
   Bit8 vflag;
   Bit8 c = bitOn(machine->regP, CARRY_FL);
   Bit16 tmp, w;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   vflag = (bitOn(machine->regA,NEGATIVE_FL) &&
 	   bitOn(ptr.value, NEGATIVE_FL));
 
@@ -909,8 +911,8 @@ static void jmpSBC(machine_6502 *machine, AddrMode adm){
 
 static void jmpSTA(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   memStoreByte(machine,ptr.addr,machine->regA);
 }
 
@@ -943,15 +945,15 @@ static void jmpPLP(machine_6502 *machine, AddrMode adm){
 
 static void jmpSTX(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   memStoreByte(machine,ptr.addr,machine->regX);
 }
 
 static void jmpSTY(machine_6502 *machine, AddrMode adm){
   Pointer ptr;
-  Bool isValue = getValue(machine, adm, &ptr);
-  assert(isValue);
+  BOOL isValue = getValue(machine, adm, &ptr);
+  warnValue(isValue);
   memStoreByte(machine,ptr.addr,machine->regY);
 }
 
@@ -1123,7 +1125,7 @@ static Label *newLabel(void){
   return newp;
 }
 
-static AsmLine *newAsmLine(char *cmd, char *label, Bool decl, Param *param, int lc)
+static AsmLine *newAsmLine(char *cmd, char *label, BOOL decl, Param *param, int lc)
 {
     AsmLine *newp;
 
@@ -1149,15 +1151,15 @@ static AsmLine *addend(AsmLine *listp, AsmLine *newp)
     return listp;
 }
 
-static Bool apply(AsmLine *listp, Bool(*fn)(AsmLine*, void*), void *arg)
+static BOOL apply(AsmLine *listp, BOOL(*fn)(AsmLine*, void*), void *arg)
 {
   AsmLine *p;
   if(listp == NULL)
-    return False;
+    return FALSE;
   for (p = listp; p != NULL; p = p->next)
     if (! fn(p,arg) )
-      return False;
-  return True;
+      return FALSE;
+  return TRUE;
 }
 
 static void freeParam(Param *param){
@@ -1182,14 +1184,14 @@ static void freeallAsmLine(AsmLine *listp)
     }
 }
 
-static Bool addvalue(Param *param,Bit32 value){
+static BOOL addvalue(Param *param,Bit32 value){
   if (0 <= param->vp && param->vp < MAX_PARAM_VALUE) {
     param->value[param->vp++] = value;
-    return True;
+    return TRUE;
   }
   else {
     fprintf(stderr,"Wrong number of parameters: %d. The limit is %d\n",param->vp+1, MAX_PARAM_VALUE);
-    return False;
+    return FALSE;
   }
 }
 
@@ -1206,7 +1208,7 @@ static void stoupper(char **s){
   }
 }
  
-static Bool isWhite(char c){
+static BOOL isWhite(char c){
   return (c == '\r' || c == '\t' || c == ' ');
 }
 
@@ -1222,36 +1224,36 @@ static void nullify(char *token, unsigned int sourceLength){
     token[i++] = '\0';
 }
 
-static Bool isBlank(const char *token){
+static BOOL isBlank(const char *token){
   return (token[0] == '\0');
 }
 
-static Bool isCommand(machine_6502 *machine, const char *token){
+static BOOL isCommand(machine_6502 *machine, const char *token){
   int i = 0;
 
   while (i < NUM_OPCODES) {
     if (strcmp(machine->opcodes[i].name,token) == 0) 
-      return True;
+      return TRUE;
     i++;
   }
   
-  if (strcmp(token, "DCB") == 0) return True;
-  return False;
+  if (strcmp(token, "DCB") == 0) return TRUE;
+  return FALSE;
 }
 
 /* hasChar() - Check to see if the current line has a certain
    charater */
-static Bool hasChar(char *s, char c){
+static BOOL hasChar(char *s, char c){
   for(; *s != '\0' && *s != '\n'; s++) {
     if (*s  == c)
-      return True;
+      return TRUE;
   }
-  return False;
+  return FALSE;
 }
 
-static Bool ishexdigit(char c){
+static BOOL ishexdigit(char c){
   if (isdigit(c))
-    return True;
+    return TRUE;
   else {
     char c1 = toupper(c);
     return ('A' <= c1 && c1 <= 'F');
@@ -1260,18 +1262,18 @@ static Bool ishexdigit(char c){
 
 /* command() - parse a command from the source code. We pass along a
    machine so the opcode can be validated. */
-static Bool command(machine_6502 *machine, char **s, char **cmd){
+static BOOL command(machine_6502 *machine, char **s, char **cmd){
   int i = 0;
   skipSpace(s);
   for(;isalpha(**s) && i < MAX_CMD_LEN; (*s)++)
     (*cmd)[i++] = **s;
   if (i == 0)
-    return True; /* Could be a blank line. */
+    return TRUE; /* Could be a blank line. */
   else
     return isCommand(machine,*cmd);
 }
 
-static Bool declareLabel(char **s, char **label){
+static BOOL declareLabel(char **s, char **label){
   int i = 0;
   skipSpace(s);
   for(;**s != ':' && **s != '\n' && **s != '\0'; (*s)++){
@@ -1280,16 +1282,16 @@ static Bool declareLabel(char **s, char **label){
     (*label)[i++] = **s;
   }
   if (i == 0)
-    return False; /* Current line has to have a label */
+    return FALSE; /* Current line has to have a label */
   else if (**s == ':'){
     (*s)++; /* Skip colon */
-    return True;
+    return TRUE;
   }
   else
-    return False;
+    return FALSE;
 }
 
-static Bool parseHex(char **s, Bit32 *value){
+static BOOL parseHex(char **s, Bit32 *value){
   enum { MAX_HEX_LEN = 5 };
   if (**s == '$') {    
     char *hex = ecalloc(MAX_HEX_LEN, sizeof(char));
@@ -1301,13 +1303,13 @@ static Bool parseHex(char **s, Bit32 *value){
     
     *value = strtol(hex,NULL,16);
     free(hex);  
-    return True;
+    return TRUE;
   }
   else
-    return False;
+    return FALSE;
 }
   
-static Bool parseDec(char **s, Bit32 *value){
+static BOOL parseDec(char **s, Bit32 *value){
   enum { MAX_DEC_LEN = 4 };
   char *dec = ecalloc(MAX_DEC_LEN, sizeof(char));
   int i;
@@ -1317,33 +1319,34 @@ static Bool parseDec(char **s, Bit32 *value){
   if (i > 0){
     *value = atoi(dec);
     free(dec);  
-    return True;
+    return TRUE;
   }
   else
-    return False;
+    return FALSE;
 }
 
-static Bool parseValue(char **s, Bit32 *value){
+static BOOL parseValue(char **s, Bit32 *value){
+  skipSpace(s);
   if (**s == '$')
     return parseHex(s, value);
   else
     return parseDec(s, value);
 }
 
-static Bool paramLabel(char **s, char **label){
+static BOOL paramLabel(char **s, char **label){
   int i;
-  for(i = 0; isalnum(**s) && i < MAX_LABEL_LEN; (*s)++)
+  for(i = 0; (isalnum(**s) || **s == '_') && i < MAX_LABEL_LEN; (*s)++)
     (*label)[i++] = **s;
 
   if (i > 0)
-    return True;
+    return TRUE;
   else
-    return False;
+    return FALSE;
 }
 
-static Bool immediate(char **s, Param *param){
+static BOOL immediate(char **s, Param *param){
   if (**s != '#') 
-    return False;
+    return FALSE;
 
   (*s)++; /*Move past hash */
   if (**s == '<' || **s == '>'){    
@@ -1354,7 +1357,7 @@ static Bool immediate(char **s, Param *param){
       int ln = strlen(label) + 1;
       strncpy(param->label, label, ln);
       free(label);
-      return True;
+      return TRUE;
     }    
     free(label);
   }
@@ -1363,20 +1366,20 @@ static Bool immediate(char **s, Param *param){
     if (parseValue(s, &value)){
       if (value > 0xFF){
 	parseError("Immediate value is too large.");
-	return False;
+	return FALSE;
       }
       param->type = IMMEDIATE_VALUE;
       return addvalue(param, value);
     }
   }
-  return False;
+  return FALSE;
 }
 
-static Bool isDirection(char c){
+static BOOL isDirection(char c){
   return (c == 'X' || c == 'Y');
 }
 
-static Bool getDirection(char **s, char *direction){
+static BOOL getDirection(char **s, char *direction){
   skipSpace(s);
   if (**s == ','){
     (*s)++;
@@ -1384,35 +1387,35 @@ static Bool getDirection(char **s, char *direction){
     if (isDirection(**s)){
       *direction = **s;
       (*s)++;
-      return True;
+      return TRUE;
     }
   }
-  return False;
+  return FALSE;
 }
   
-static Bool indirect(char **s, Param *param){
+static BOOL indirect(char **s, Param *param){
   Bit32 value;
   char c;
   if (**s == '(') 
     (*s)++;
   else
-    return False;
+    return FALSE;
   
   if (! parseHex(s,&value)) 
-    return False;
+    return FALSE;
   if (value > 0xFF) {
     parseError("Indirect value is too large.");
-    return False;
+    return FALSE;
   }
   if (!addvalue(param, value))
-    return False;
+    return FALSE;
   skipSpace(s);
   if (**s == ')'){
     (*s)++;
     if (getDirection(s,&c)) {
       if (c == 'Y'){
 	param->type = INDIRECT_Y;
-	return True;
+	return TRUE;
       }
     }
   }
@@ -1422,23 +1425,23 @@ static Bool indirect(char **s, Param *param){
       if (**s == ')'){
 	(*s)++;
 	param->type = INDIRECT_X;
-	return True;
+	return TRUE;
       }
     }
   }
-  return False;
+  return FALSE;
 }
 
-static Bool dcbValue(char **s, Param *param){
+static BOOL dcbValue(char **s, Param *param){
   Bit32 val;
   if (! parseValue(s,&val))
-    return False;
+    return FALSE;
 
   if (val > 0xFF) 
-    return False;
+    return FALSE;
 		    
   if (!addvalue(param,val))
-    return False;
+    return FALSE;
 
   param->type = DCB_PARAM;
 
@@ -1448,21 +1451,21 @@ static Bool dcbValue(char **s, Param *param){
     return dcbValue(s, param);
   }
   else
-    return True;
+    return TRUE;
 } 
 
-static Bool value(char **s, Param *param){
+static BOOL value(char **s, Param *param){
   Bit32 val;
-  Bool abs;
-  Bool dir;
+  BOOL abs;
+  BOOL dir;
   char c = '\0';
   if (! parseValue(s,&val))
-    return False;
+    return FALSE;
 
   abs = (val > 0xFF);
   dir = getDirection(s,&c);
   if (!addvalue(param,val))
-    return False;
+    return FALSE;
 
   if(abs && dir){
     if (c == 'X')
@@ -1470,7 +1473,7 @@ static Bool value(char **s, Param *param){
     else if (c == 'Y')
       param->type = ABS_Y;
     else
-      return False;
+      return FALSE;
   }
   else if (abs)
     param->type = ABS_VALUE;
@@ -1480,20 +1483,20 @@ static Bool value(char **s, Param *param){
     else if (c == 'Y')
       param->type = ZERO_Y;
     else
-      return False;
+      return FALSE;
   }
   else
     param->type = ZERO;
 
-  return True;
+  return TRUE;
 }
 
-static Bool label(char **s, Param *param){
+static BOOL label(char **s, Param *param){
   char *label = ecalloc(MAX_LABEL_LEN, sizeof(char));
   char c;
-  Bool labelOk = False;
+  BOOL labelOk = FALSE;
   if (paramLabel(s, &label)){
-    labelOk = True;
+    labelOk = TRUE;
     param->type = ABS_OR_BRANCH;
     if (getDirection(s, &c)){
       if (c == 'X')
@@ -1501,7 +1504,7 @@ static Bool label(char **s, Param *param){
       else if (c == 'Y')
 	param->type = ABS_LABEL_Y;
       else
-	labelOk = False;
+	labelOk = FALSE;
     }
     strncpy(param->label,label,MAX_LABEL_LEN);
   }
@@ -1509,10 +1512,10 @@ static Bool label(char **s, Param *param){
   return labelOk;
 }
 
-static Bool parameter(const char *cmd, char **s, Param *param){
+static BOOL parameter(const char *cmd, char **s, Param *param){
   skipSpace(s);
   if (**s == '\0' || **s == '\n')
-    return True;
+    return TRUE;
   else if (**s == '#')
     return immediate(s,param);
   else if (**s == '(')
@@ -1526,7 +1529,7 @@ static Bool parameter(const char *cmd, char **s, Param *param){
   else if (isalpha(**s))
     return label(s ,param);
   else
-    return False; /* Invalid Parameter */
+    return FALSE; /* Invalid Parameter */
 }
 
 static void comment(char **s){
@@ -1546,17 +1549,17 @@ static void initParam(Param *param){
 }
   
 
-static AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *code){
+static AsmLine *parseAssembly(machine_6502 *machine, BOOL *codeOk, const char *code){
   char *s;
   char *cmd = ecalloc(MAX_CMD_LEN, sizeof(char));
   char *label = ecalloc(MAX_LABEL_LEN, sizeof(char));
   char *start; /*pointer to the start of the code.*/
   unsigned int lc = 1;
   Param *param;
-  Bool decl;
+  BOOL decl;
   AsmLine *listp = NULL;
 
-  *codeOk = True;
+  *codeOk = TRUE;
   param = newParam();
   s = estrdup(code);
   start = s;
@@ -1566,7 +1569,7 @@ static AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *c
     initParam(param);
     nullify(cmd, MAX_CMD_LEN);
     nullify(label, MAX_LABEL_LEN);
-    decl = False;
+    decl = FALSE;
     skipSpace(&s);
     comment(&s);
     if (*s == '\n'){
@@ -1577,21 +1580,21 @@ static AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *c
     else if (*s == '\0')
       continue; /* no newline at the end of the code */
     else if (hasChar(s,':')){
-      decl = True;
+      decl = TRUE;
       if(! declareLabel(&s,&label)){
-	*codeOk = False;
+	*codeOk = FALSE;
 	break;
       }
       skipSpace(&s);
     }
     if(!command(machine, &s, &cmd)){
-      *codeOk = False;
+      *codeOk = FALSE;
       break;
     }
     skipSpace(&s);
     comment(&s);
     if(!parameter(cmd, &s, param)){
-      *codeOk = False;
+      *codeOk = FALSE;
       break;
     }
     skipSpace(&s);
@@ -1602,7 +1605,7 @@ static AsmLine *parseAssembly(machine_6502 *machine, Bool *codeOk, const char *c
       listp = addend(listp,asmm);
     }
     else {
-      *codeOk = False;
+      *codeOk = FALSE;
       break;
     }
   }
@@ -1664,43 +1667,62 @@ static void reset(machine_6502 *machine){
     }
   }
 
-  for(x=0; x<0x600; x++)
+  for(x=0; x < MEM_64K; x++)
     machine->memory[x] = 0;
 
-  machine->codeCompiledOK = False;
+  machine->codeCompiledOK = FALSE;
   machine->regA = 0;
   machine->regX = 0;
   machine->regY = 0;
   machine->regP = setBit(machine->regP, FUTURE_FL, 1);
   machine->regPC = 0x600; 
   machine->regSP = STACK_TOP;
-  machine->runForever = False;
+  machine->runForever = FALSE;
   machine->labelPtr = 0;
-  machine->codeRunning = False;
+  machine->codeRunning = FALSE;
 }
 
-/* hexDump() - Dump the memory to stdout */
-static void hexDump(machine_6502 *machine, Bit16 start, Bit16 numbytes){
+/* hexDump() - Dump the memory to output */
+void hexDump(machine_6502 *machine, Bit16 start, Bit16 numbytes, FILE *output){
   Bit32 address;
   Bit32 i;
   for( i = 0; i < numbytes; i++){
     address = start + i;
     if ( (i&15) == 0 ) {
-      printf("\n%.4xl: ", address);
+      fprintf(output,"\n%.4x: ", address);
     }
-    printf("%.2x%s",machine->memory[address], (i & 1) ? " ":"");
+    fprintf(output,"%.2x%s",machine->memory[address], (i & 1) ? " ":"");
   }
-  printf("%s\n",(i&1)?"--":"");
+  fprintf(output,"%s\n",(i&1)?"--":"");
 }
 
-static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
+void save_program(machine_6502 *machine, char *filename){
+  FILE *ofp;
+  Bit16 pc = 0x600;
+  Bit16 end = pc + machine->codeLen;
+  Bit16 n;
+  ofp = fopen(filename, "w");
+  if (ofp == NULL)
+    eprintf("Could not open file.");
+  
+  fprintf(ofp,"Bit8 prog[%d] =\n{",machine->codeLen);
+  n = 1;
+  while(pc < end)
+    fprintf(ofp,"0x%.2x,%s",machine->memory[pc++],n++%10?" ":"\n");
+  fseek(ofp,-2,SEEK_CUR);
+  fprintf(ofp,"};\n");
+  
+  fclose(ofp);
+}
+
+static BOOL translate(Opcodes *op,Param *param, machine_6502 *machine){
    switch(param->type){
     case SINGLE:
       if (op->SNGL)
 	pushByte(machine, op->SNGL);
       else {
 	fprintf(stderr,"%s needs a parameter.\n",op->name);
-	return False;
+	return FALSE;
       }
       break;
     case IMMEDIATE_VALUE:
@@ -1711,7 +1733,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take IMMEDIATE_VALUE parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case IMMEDIATE_GREAT:
       if (op->Imm) {
@@ -1721,7 +1743,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take IMMEDIATE_GREAT parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case IMMEDIATE_LESS:
       if (op->Imm) {
@@ -1731,7 +1753,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take IMMEDIATE_LESS parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case INDIRECT_X:
       if (op->INDX) {
@@ -1741,7 +1763,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take INDIRECT_X parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case INDIRECT_Y:
       if (op->INDY) {
@@ -1751,7 +1773,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take INDIRECT_Y parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ZERO:
       if (op->ZP) {
@@ -1761,7 +1783,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ZERO parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ZERO_X:
       if (op->ZPX) {
@@ -1771,7 +1793,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ZERO_X parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ZERO_Y:
       if (op->ZPY) {
@@ -1781,7 +1803,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ZERO_Y parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ABS_VALUE:
       if (op->ABS) {
@@ -1791,7 +1813,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ABS_VALUE parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ABS_OR_BRANCH:
       if (op->ABS > 0){
@@ -1809,8 +1831,8 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
 		     (param->lbladdr - machine->codeLen-1) & 0xff);
 	}
 	else {
-	  fprintf(stderr,"%s does not take BRANCH parameters.\n",op->BRA);
-	  return False;
+	  fprintf(stderr,"%s does not take BRANCH parameters.\n",op->name);
+	  return FALSE;
 	}
       }
       break;
@@ -1822,7 +1844,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ABS_X parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ABS_Y:
       if (op->ABSY) {
@@ -1832,7 +1854,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ABS_Y parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ABS_LABEL_X:
       if (op->ABSX) {
@@ -1842,7 +1864,7 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ABS_LABEL_X parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
     case ABS_LABEL_Y:
       if (op->ABSY) {
@@ -1852,21 +1874,21 @@ static Bool translate(Opcodes *op,Param *param, machine_6502 *machine){
       }
       else {
 	fprintf(stderr,"%s does not take ABS_LABEL_Y parameters.\n",op->name);
-	return False;
+	return FALSE;
       }
    case DCB_PARAM:
      /* Handled elsewhere */
      break;
    }
-   return True;
+   return TRUE;
 }
 
 /* compileLine() - Compile one line of code. Returns
-   True if it compile successfully. */
-static Bool compileLine(AsmLine *asmline, void *args){
+   TRUE if it compile successfully. */
+static BOOL compileLine(AsmLine *asmline, void *args){
   machine_6502 *machine;
   machine = args;
-  if (isBlank(asmline->command)) return True;
+  if (isBlank(asmline->command)) return TRUE;
 
   if (strcmp("DCB",asmline->command) == 0){
     int i;
@@ -1884,15 +1906,15 @@ static Bool compileLine(AsmLine *asmline, void *args){
       }
     }
     if (i == NUM_OPCODES)
-      return False; /* unknow upcode */
+      return FALSE; /* unknow upcode */
     else
       return translate(&op,asmline->param,machine);
   }
-  return True;
+  return TRUE;
 }
 
 /* indexLabels() - Get the address for each label */
-static Bool indexLabels(AsmLine *asmline, void *arg){
+static BOOL indexLabels(AsmLine *asmline, void *arg){
   machine_6502 *machine; 
   int thisPC;
   machine = arg;
@@ -1900,25 +1922,25 @@ static Bool indexLabels(AsmLine *asmline, void *arg){
   /* Figure out how many bytes this instruction takes */
   machine->codeLen = 0;
   if ( ! compileLine(asmline, machine) ){
-    return False;
+    return FALSE;
   }
   machine->regPC += machine->codeLen;
   if (asmline->labelDecl) {
     asmline->label->addr = thisPC;
   }
-   return True; 
+   return TRUE; 
 }
 
-static Bool changeParamLabelAddr(AsmLine *asmline, void *label){
+static BOOL changeParamLabelAddr(AsmLine *asmline, void *label){
   Label *la = label;
   if (strcmp(asmline->param->label, la->label) == 0)
     asmline->param->lbladdr = la->addr;
-  return True;
+  return TRUE;
 }
 
-static Bool linkit(AsmLine *asmline, void *asmlist){
+static BOOL linkit(AsmLine *asmline, void *asmlist){
   apply(asmlist,changeParamLabelAddr,asmline->label);
-  return True;
+  return TRUE;
 }
 
 /* linkLabels - Make sure all of the references to the labels contain
@@ -1928,8 +1950,8 @@ static void linkLabels(AsmLine *asmlist){
 }
 
 /* compileCode() - Compile the current assembly code for the machine */
-static Bool compileCode(machine_6502 *machine, const char *code){
-  Bool codeOk;
+static BOOL compileCode(machine_6502 *machine, const char *code){
+  BOOL codeOk;
   AsmLine *asmlist;
 
   reset(machine);
@@ -1939,27 +1961,26 @@ static Bool compileCode(machine_6502 *machine, const char *code){
   if(codeOk){
     /* First pass: Find the addresses for the labels */
     if (!apply(asmlist, indexLabels, machine))
-      return False;
+      return FALSE;
     /* update label references */
     linkLabels(asmlist);
     /* Second pass: translate the instructions */
     machine->codeLen = 0;
     if (!apply(asmlist, compileLine, machine))
-      return False;
+      return FALSE;
 
     if (machine->codeLen > 0 ){
-      /*      printf("Code compiled successfully, %d bytes.\n", machine->codeLen); XXX*/
       machine->memory[0x600+machine->codeLen] = 0x00;
-      codeOk = True;
+      codeOk = TRUE;
     }
     else{
       fprintf(stderr,"No Code to run.\n");
-      codeOk = False;
+      codeOk = FALSE;
     }
   }
   else{
     fprintf(stderr,"An error occured while parsing the file.\n");  
-    codeOk = False;
+    codeOk = FALSE;
   }
   freeallAsmLine(asmlist);
   return codeOk;
@@ -1981,7 +2002,7 @@ static void execute(machine_6502 *machine){
 
   opcode = popByte(machine);
   if (opcode == 0x00)
-    machine->codeRunning = False;
+    machine->codeRunning = FALSE;
   else {
     opidx = opIndex(machine,opcode,&adm);
     if(opidx > -1)
@@ -1992,8 +2013,7 @@ static void execute(machine_6502 *machine){
   if( (machine->regPC == 0) || 
       (!machine->codeRunning) || 
       (machine->regPC > (machine->codeLen+0x600)) ) {
-    fprintf(stderr, "Program end at PC=$ %x" + machine->regPC );
-    machine->codeRunning = False;
+    machine->codeRunning = FALSE;
   }
 }
 
@@ -2011,14 +2031,14 @@ void destroy6502(machine_6502 *machine){
   machine = NULL;
 }
 
-static void trace(machine_6502 *machine){
+void trace(machine_6502 *machine, FILE *output){
   Bit8 opcode = memReadByte(machine,machine->regPC);
   AddrMode adm;
   Pointer ptr;
   int opidx = opIndex(machine,opcode,&adm);
   int stacksz = STACK_TOP - machine->regSP;
 
-  fprintf(stderr,"\n   NVFBDIZC\nP: %d%d%d%d%d%d%d%d ",
+  fprintf(output,"\n   NVFBDIZC\nP: %d%d%d%d%d%d%d%d ",
 	 bitOn(machine->regP,NEGATIVE_FL),
 	 bitOn(machine->regP,OVERFLOW_FL),
 	 bitOn(machine->regP,FUTURE_FL),
@@ -2027,20 +2047,20 @@ static void trace(machine_6502 *machine){
 	 bitOn(machine->regP,INTERRUPT_FL),
 	 bitOn(machine->regP,ZERO_FL),
 	 bitOn(machine->regP,CARRY_FL));
-  fprintf(stderr,"A: %.2x X: %.2x Y: %.2x SP: %.4x PC: %.4x\n",
+  fprintf(output,"A: %.2x X: %.2x Y: %.2x SP: %.4x PC: %.4x\n",
 	 machine->regA, machine->regX, machine->regY, machine->regSP, machine->regPC);
   if (opidx > -1){
     Bit16 pc = machine->regPC;
-    fprintf(stderr,"\n%.4x:\t%s",machine->regPC, machine->opcodes[opidx].name);
+    fprintf(output,"\n%.4x:\t%s",machine->regPC, machine->opcodes[opidx].name);
     if (peekValue(machine, adm, &ptr, pc+1))
-      fprintf(stderr,"\tAddress:%.4x\tValue:%.4x\n",
+      fprintf(output,"\tAddress:%.4x\tValue:%.4x\n",
 	     ptr.addr,ptr.value);
     else
-      fprintf(stderr,"\n");
+      fprintf(output,"\n");
   }
-  fprintf(stderr,"STACK:");
-  hexDump(machine,(STACK_TOP - stacksz) + 1, stacksz);
-  fprintf(stderr,"\n================================================================================\n");
+  fprintf(output,"STACK:");
+  hexDump(machine,(STACK_TOP - stacksz) + 1, stacksz, output);
+  fprintf(output,"\n================================================================================\n");
 }
 
     
@@ -2048,7 +2068,7 @@ static void trace(machine_6502 *machine){
 
 void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState){
   char *code = NULL;
-  int i = 0;
+
   machine->plot = plot;
   machine->plotterState = plotterState;
 
@@ -2061,7 +2081,7 @@ void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotte
   free(code);
 
   machine->regPC = 0x600;
-  machine->codeRunning = True;
+  machine->codeRunning = TRUE;
   do{
     sleep(0); /* XXX */
 #if 0
@@ -2075,7 +2095,8 @@ void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotte
 
 void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState){
   char *code = NULL;
-  int i = 0;
+  reset(machine);
+
   machine->plot = plot;
   machine->plotterState = plotterState;
 
@@ -2088,7 +2109,26 @@ void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *
   free(code);
 
   machine->regPC = 0x600;
-  machine->codeRunning = True;
+  machine->codeRunning = TRUE;
+  execute(machine);
+}
+
+void start_eval_binary(machine_6502 *machine, Bit8 *program,
+		       unsigned int proglen,
+		       Plotter plot, void *plotterState){
+  unsigned int pc, n;
+  reset(machine);
+  machine->plot = plot;
+  machine->plotterState = plotterState;
+
+  machine->regPC = 0x600;
+  pc = machine->regPC;
+  machine->codeLen = proglen;
+  n = 0;
+  while (n < proglen){
+    machine->memory[pc++] = program[n++];
+  }
+  machine->codeRunning = TRUE;
   execute(machine);
 }
 
