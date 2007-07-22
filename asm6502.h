@@ -151,6 +151,9 @@ void start_eval_binary(machine_6502 *machine, Bit8 *program,
 		       unsigned int proglen,
 		       Plotter plot, void *plotterState);
 
+void start_eval_string(machine_6502 *machine, char *code,
+		       Plotter plot, void *plotterState);
+
 /* next_eval() - Execute the next insno of machine instructions */
 void next_eval(machine_6502 *machine, int insno);
 

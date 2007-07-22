@@ -2113,6 +2113,22 @@ void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *
   execute(machine);
 }
 
+void start_eval_string(machine_6502 *machine, char *code,
+		       Plotter plot, void *plotterState){
+  reset(machine);
+
+  machine->plot = plot;
+  machine->plotterState = plotterState;
+
+  if (! compileCode(machine, code) ){
+    fprintf(stderr,"Could not compile code.\n");
+  }
+
+  machine->regPC = 0x600;
+  machine->codeRunning = TRUE;
+  execute(machine);
+}
+
 void start_eval_binary(machine_6502 *machine, Bit8 *program,
 		       unsigned int proglen,
 		       Plotter plot, void *plotterState){
