@@ -35,6 +35,10 @@
 
 #include "asm6502.h"
 
+#ifdef DEBUGGER
+#  define random rand
+#endif
+
 typedef enum{
   LEFT, RIGHT
     } Side;
