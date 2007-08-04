@@ -408,6 +408,64 @@ static BOOL getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
 
 }
 
+static void dismem(machine_6502 *machine, AddrMode adm, char *output){
+  Bit8 zp;
+  Bit16 n;
+  switch(adm){
+  case SINGLE:
+    output = "";
+    break;
+  case IMMEDIATE_LESS:
+  case IMMEDIATE_GREAT:
+  case IMMEDIATE_VALUE:
+    n = popByte(machine);
+    sprintf(output,"#$%x",n);
+    break;
+  case INDIRECT_X:
+    zp = popByte(machine);
+    n = memReadByte(machine,zp) + 
+      (memReadByte(machine,zp+1)<<8);
+    sprintf(output,"($%x,x)",n);
+    break;
+  case INDIRECT_Y:
+    zp = popByte(machine);
+    n = memReadByte(machine,zp) + 
+      (memReadByte(machine,zp+1)<<8);
+    sprintf(output,"($%x),y",n);
+    break;
+  case ABS_OR_BRANCH:
+  case ZERO:    
+    n = popByte(machine);
+    sprintf(output,"$%x",n);
+    break;
+  case ZERO_X:
+    n = popByte(machine);
+    sprintf(output,"$%x,x",n);
+    break;
+  case ZERO_Y:
+    n = popByte(machine);
+    sprintf(output,"$%x,y",n);
+    break;
+  case ABS_VALUE:
+    n = popWord(machine);
+    sprintf(output,"$%x",n);
+    break;
+  case ABS_LABEL_X:
+  case ABS_X:
+    n = popWord(machine);
+    sprintf(output,"$%x,x",n);
+    break;
+  case ABS_LABEL_Y:
+  case ABS_Y:
+    n = popWord(machine);
+    sprintf(output,"$%x,x",n);
+    break;
+  case DCB_PARAM:
+    output = "";
+    break;
+  }
+}
+
 /* manZeroNeg - Manage the negative and zero flags */
 static void manZeroNeg(machine_6502 *machine, Bit8 value){
   machine->regP = setBit(machine->regP, ZERO_FL, (value == 0));
@@ -2063,7 +2121,32 @@ void trace(machine_6502 *machine, FILE *output){
   fprintf(output,"\n================================================================================\n");
 }
 
-    
+void disassemble(machine_6502 *machine, FILE *output){
+  /* Read the opcode
+     increment the program counter
+     print the opcode
+     loop until end of program. */
+  AddrMode adm;
+  Bit16 addr;
+  Bit8 opcode;
+  int opidx;
+  char *mem;
+  int i;
+  Bit16 opc = machine->regPC;
+  mem = calloc(20,sizeof(char));
+  machine->regPC = 0x600;
+  do{
+    addr = machine->regPC;
+    opcode = popByte(machine);
+    opidx = opIndex(machine,opcode,&adm);
+    for (i = 0; i < 20; i++) mem[i] = '\0';
+    dismem(machine, adm, mem);
+    fprintf(output,"%x\t%s\t%s\n",
+	    addr,machine->opcodes[opidx].name,mem); 
+  }while((machine->regPC - 0x600) < machine->codeLen); 
+  free(mem);
+  machine->regPC = opc;
+}
 
 
 void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState){

@@ -161,6 +161,10 @@ void next_eval(machine_6502 *machine, int insno);
 void hexDump(machine_6502 *machine, Bit16 start, 
 	     Bit16 numbytes, FILE *output);
 
+/* Disassemble() - Prints the assembly code for the program currently
+   loaded in memory.*/
+void disassemble(machine_6502 *machine, FILE *output);
+
 /* trace() - Prints to output the current value of registers, the
    current nmemonic, memory address and value. */
 void trace(machine_6502 *machine, FILE *output);
