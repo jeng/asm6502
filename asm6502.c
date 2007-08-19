@@ -929,7 +929,7 @@ static void jmpSBC(machine_6502 *machine, AddrMode adm){
     Bit8 ar = nibble(machine->regA, RIGHT);
     Bit8 br = nibble(ptr.value, RIGHT);
     Bit8 al = nibble(machine->regA, LEFT);
-    Bit8 bl = nibble(machine->regA, LEFT);
+    Bit8 bl = nibble(ptr.value, LEFT);
 
     tmp = 0xf + ar - br + c;
     if ( tmp < 0x10){
