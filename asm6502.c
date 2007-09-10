@@ -299,9 +299,9 @@ static BOOL peekValue(machine_6502 *machine, AddrMode adm, Pointer *pointer, Bit
     pointer->value = memReadByte(machine, PC);
     return TRUE;
   case INDIRECT_X:
-    zp = memReadByte(machine, PC);
+    zp = memReadByte(machine, PC) + machine->regX;
     pointer->addr = memReadByte(machine,zp) + 
-      (memReadByte(machine,zp+1)<<8) + machine->regX;
+      (memReadByte(machine,zp+1)<<8);
     pointer->value = memReadByte(machine, pointer->addr);
     return TRUE;
   case INDIRECT_Y:
@@ -364,9 +364,9 @@ static BOOL getValue(machine_6502 *machine, AddrMode adm, Pointer *pointer){
     pointer->value = popByte(machine);
     return TRUE;
   case INDIRECT_X:
-    zp = popByte(machine);
+    zp = popByte(machine) + machine->regX;
     pointer->addr = memReadByte(machine,zp) + 
-      (memReadByte(machine,zp+1)<<8) + machine->regX;
+      (memReadByte(machine,zp+1)<<8);
     pointer->value = memReadByte(machine, pointer->addr);
     return TRUE;
   case INDIRECT_Y:
