@@ -48,14 +48,14 @@ d:tya
   lda #14
   sta $200,x
   sta $220,x
-  ldx #0
-  sta ($0,x)
-  inx
-  sta ($0,x)
-  ldx #30
-  sta ($0,x)
-  inx
-  sta ($0,x)
+  ldy #0
+  sta ($0),y
+  iny
+  sta ($0),y
+  ldy #30
+  sta ($0),y
+  iny
+  sta ($0),y
 
   lda $0
   cmp #$e0
@@ -139,9 +139,9 @@ notBounceX:
   sta $1
   lda $11
   and #$1f
-  tax
+  tay
   lda #$d
-  sta ($0,x)
+  sta ($0),y
 
 
 
@@ -175,8 +175,8 @@ checkPos:
   sta $1
   lda $11
   and #$1f
-  tax
-  lda ($0,x)
+  tay
+  lda ($0),y
   rts
 
 ; - move player
@@ -232,7 +232,11 @@ obsticleLoop:
 ;  ldy #10
   lda #$c
 row:
-  sta ($5,x)
+  pha
+  txa
+  tay
+  pla		
+  sta ($5),y
   inx
   dey
   bne row
