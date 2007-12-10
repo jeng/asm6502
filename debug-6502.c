@@ -191,18 +191,19 @@ static void handleCommands(machine_6502 *machine, Bit16 *breaks, int *bpi){
     break;
   case 'p': /* save the program to a file */
     {
-      int max = 255;
-      char *filename = calloc(max,sizeof(char));
-      if (filename){
-	getfilename(filename,max);
-	if (filename[0]){
-	  save_program(machine,filename);
-	}
-	free(filename);
-      }
-      else {
-	fprintf(stderr,"Could not get memory for the file name\n");
-      }
+      fprintf(stderr,"Disabled for now\n");
+      /* int max = 255; */
+      /* char *filename = calloc(max,sizeof(char)); */
+      /* if (filename){ */
+      /* 	getfilename(filename,max); */
+      /* 	if (filename[0]){ */
+      /* 	  save_program(machine,filename); */
+      /* 	} */
+      /* 	free(filename); */
+      /* } */
+      /* else { */
+      /* 	fprintf(stderr,"Could not get memory for the file name\n"); */
+      /* } */
     }
     break;
   case 'q':

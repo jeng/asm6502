@@ -46,7 +46,8 @@ enum {
   MAX_CMD_LEN = 4, /* Each assembly command is 3 characeters long */
 /* The stack works from the top down in page $100 to $1ff */
   STACK_TOP = 0x1ff,
-  STACK_BOTTOM = 0x100 
+  STACK_BOTTOM = 0x100, 
+  PROG_START = 0x600 /* The default entry point for the program */
 };
 
 typedef enum{
@@ -117,6 +118,7 @@ struct machine_6502 {
   Bit8 regP;
   Bit16 regPC; /* A pair of 8 bit registers */
   Bit16 regSP;
+  Bit16 defaultCodePC;
   Bit8 memory[MEM_64K];
   BOOL runForever;
   int labelPtr;
@@ -147,9 +149,11 @@ void eval_file(machine_6502 *machine, char *filename,
 void start_eval_file(machine_6502 *machine, char *filename, 
 		     Plotter plot, void *plotterState);
 
+/* XXX
 void start_eval_binary(machine_6502 *machine, Bit8 *program,
 		       unsigned int proglen,
 		       Plotter plot, void *plotterState);
+*/
 
 void start_eval_string(machine_6502 *machine, char *code,
 		       Plotter plot, void *plotterState);
@@ -171,6 +175,7 @@ void trace(machine_6502 *machine, FILE *output);
 
 /* save_program() - Writes a binary file of the program loaded in
    memory. */
+/* XXX
 void save_program(machine_6502 *machine, char *filename);
-
+*/
 #endif /* __ASM6502_H__ */
