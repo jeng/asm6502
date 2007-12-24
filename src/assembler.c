@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 
 typedef enum  {
   False = 0,
@@ -32,7 +33,6 @@ void clearDisplay() {
 void plot(Bit8 x, Bit8 y, Bit8 idx, void *p){
   char *colorTbl = "* /.-=[]|(&~#$+_";
   char c = *(colorTbl + idx);
-  fprintf(stderr,"OUTPUT: x %.3d, y %.3d idx %.3d\n", x, y, idx);
   x = x + 1;
   y = y + 1;
   printf("%c[%dC",0x1b,x);

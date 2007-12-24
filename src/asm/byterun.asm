@@ -1,5 +1,5 @@
 ; testing byterun compression
-
+ 
 start:
   lda #<logo
   sta $0
@@ -13,18 +13,19 @@ start:
 decrunchLoop:
   lda $3
   cmp #$6
-  bne moreWork
+  bne moreWork 
   rts
 moreWork:
-  ldx #0
-  lda ($0,x)
+  ldy #0
+  lda ($0),y
   cmp #$ff
   bne notCrunched
-  inx
-  lda ($0,x) ; repeat #
-  tay
-  inx
-  lda ($0,x) ; color
+  iny
+  lda ($0),y ; repeat #
+  sta $4
+  iny
+  lda ($0),y ; color
+  ldy $4
 drawLoop:
   ldx #0
   sta ($2,x)
@@ -95,4 +96,5 @@ logo:
  dcb 1,1,$f,0,1,1,1,$c,$c,1,0,$f,1,0,$f,1
  dcb 1,$f,0,1,0,$f,1,0,$f,1,0,$f,$ff,16,1
  dcb $f,$ff,5,1,$f,1,1,1,$f,$ff,38,1
+
 

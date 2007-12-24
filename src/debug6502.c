@@ -108,7 +108,7 @@ static void help(){
   fprintf(stdout,"c - Continue running the program until a break point is reached.\n");
   fprintf(stdout,
 	  "d - Enter a hexidecimal address to print the memory at that address.\n\tstart[,end]\n");
-  fprintf(stdout,"p - Enter a filename to save the program.\n");
+  /*XXX:  fprintf(stdout,"p - Enter a filename to save the program.\n"); May need to dump all memory. */
   fprintf(stdout,"q - Quit.\n");
   fprintf(stdout,"? - Prints this screen.\n");
 }

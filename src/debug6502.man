@@ -1,0 +1,61 @@
+.TH debug6502 "April 12 2007"
+.SH NAME
+debug6502 - Debugger and emulator for the 6502 microprocessor.
+.SH SYNOPSIS
+.B debug6502
+.I filename
+.SH DESCRIPTION
+The
+.I debug6502 
+program assembles, emulates and runs a debugger on a 6502 assembly
+source file.  The program will let you disassemble the current program
+in memory, set breakpoints and dump sections of memory.
+
+.SH OPTIONS
+.I debug6502
+accepts the following options:
+.TP 8
+.B filename
+A source file is required to run the debugger.
+.SH ENVIRONMENT
+.PP
+Once the debugger is started a handful of single letter commands will preform different task.
+.TP 8
+.B n 
+Executes the next instruction.
+.TP 8
+.B a 
+.I filename 
+Disassembles the program in memory and saves it to a file. 
+.TP 8
+.B c 
+Continues running the program until a break point is reached.
+.TP 8
+.B d
+.I start[,end]
+Dumps a section of memory to the screen. The start and end address need to be base 16.
+.TP 8
+.B q
+Quits the debugger.
+.TP 8
+.B ?
+Prints the help screen.
+
+.SH TRADEMARKS
+The Original 6502 was developed by MOS Technology.
+
+.SH SEE ALSO
+.BR http://www.6502asm.com/
+.SH COPYRIGHT
+2007 by Jeremy English.  Permission to use, copy, modify, 
+distribute, and sell this software and its documentation for any purpose is 
+hereby granted without fee, provided that the above copyright notice appear 
+in all copies and that both that copyright notice and this permission notice
+appear in supporting documentation.  No representations are made about the 
+suitability of this software for any purpose.  It is provided "as is" without
+express or implied warranty.
+.SH AUTHOR
+Original 6502 emulator was written by Stian Soreng
+<6502asm@gmail.com>. The emulator was ported to C and the debugger was
+written by Jeremy English <jhe@jeremyenglish.org>
+

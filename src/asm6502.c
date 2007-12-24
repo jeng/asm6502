@@ -2127,7 +2127,6 @@ void trace(machine_6502 *machine, FILE *output){
   }
   fprintf(output,"STACK:");
   hexDump(machine,(STACK_TOP - stacksz) + 1, stacksz, output);
-  fprintf(output,"\n================================================================================\n");
 }
 
 void disassemble(machine_6502 *machine, FILE *output){
