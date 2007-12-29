@@ -10,6 +10,8 @@ AC_CONFIG_SRCDIR([src/asm6502.c])
 # Checks for programs.
 AC_PROG_AWK
 AC_PROG_CC
+CFLAGS="-ggdb -O0"
+
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lm':

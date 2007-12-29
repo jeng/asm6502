@@ -1802,7 +1802,7 @@ static BOOL translate(Opcodes *op,Param *param, machine_6502 *machine){
     case IMMEDIATE_GREAT:
       if (op->Imm) {
 	pushByte(machine, op->Imm);
-	pushByte(machine, param->lbladdr / 0xFF);
+	pushByte(machine, param->lbladdr >> 8);
 	break;
       }
       else {
