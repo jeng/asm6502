@@ -18,199 +18,175 @@
 ;;   AABBCC     0 = AAEEAA
 ;;              2 = CCBBDD
 
-;;Addresses $0 and $1 are used by the paint subroutine.
+;; Addresses $0 and $1 are used by the paint subroutine.
+;; Addresses $2 through $6 are used by the display pattern subroutine
+;; Address $7 is used in the main loop
+;; Address $8 through $1a  are used for the start positions
+;; Address $1b is used by the display pattern subroutine
+;; Address $1c is used as the color row offset.
+;; Addresses $d0 through $ef store the font table
 
-jsr dis_6
-jsr dis_5
-jsr dis_0
-jsr dis_2
+jmp init_font_table
+start:
+
+;; Initialize the pointers to the start position.
+lda #<y_start_pos1
+sta $b
+lda #>y_start_pos1
+sta $c
+lda #<y_start_pos2
+sta $d
+lda #>y_start_pos2
+sta $e
+lda #<y_start_pos3
+sta $f
+lda #>y_start_pos3
+sta $10
+lda #<y_start_pos4
+sta $11
+lda #>y_start_pos4
+sta $12
+lda #<y_start_pos5
+sta $13
+lda #>y_start_pos5
+sta $14
+lda #<y_start_pos4
+sta $15
+lda #>y_start_pos4
+sta $16
+lda #<y_start_pos3
+sta $17
+lda #>y_start_pos3
+sta $18
+lda #<y_start_pos2
+sta $19
+lda #>y_start_pos2
+sta $1a
+
+
+lda #0        ; start position to use
+sta $8
+
+main_loop:
+inc $1c       ; increment the color offset.
+inc $1d       ; increment the starting x position
+ldy $8        ; load the current start position index
+ldx $b,y      ; get the lsb from the table
+txa
+sta $9        ; store the msb of the start position pointer
+iny           ; move to the next position in the table
+ldx $b,y      ; get the msb from the table
+txa
+sta $a        ; store the lsb of the start position pointer
+iny           ; move the index up by one
+tya
+cmp #$10       ; have we looked at all 16 start positions?
+bne store_idx ; if not then keep the index and store it
+lda #0        ; set the index back to zero
+store_idx:
+sta $8        ; save the index back in memory
+
+ldy #0
+lda #$ff
+sta $4        ; initialize the column to FF
+display_loop:
+  inc $4      ; increment the column
+  ldx $d0,y   ; load the lsb from the font table
+  stx $2
+  iny
+  ldx $d0,y   ; load the msb from the font table
+  stx $3
+  sty $7      ; save y in memory
+  jsr dis_pat ; Jump to the display pattern subroutine.
+  inc $4      ; increment the column	
+  jsr dis_pat ; Each pattern gets painted twice so we have a thicker font
+  ldy $7      ; get y out of memory
+  iny         ; increment the index
+  tya
+  cmp #$20    ; Did we display all of the columns?
+  bne display_loop ;if not continue
+jmp main_loop
 rts
 
-
-;;Display the digit 6 on the screen
-dis_6:
-  lda #<pattern_a      ; Load the lsb of pattern a
-  sta $2               ; store lsb
-  lda #>pattern_a      ; Load the msb of pattern a
-  sta $3               ; store msb
-  lda #0               ; Load the current column
-  sta $4               ; store the column
-  jsr dis_pat          ; Jump to the display pattern subroutine.
-  lda #1               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw pattern a again
-  lda #<pattern_b      ; load pattern B
-  sta $2               ; store lsb
-  lda #>pattern_b
-  sta $3               ; store msb
-  lda #2               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first b pattern
-  lda #3               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second b pattern
-  lda #<pattern_c      ; load pattern C
-  sta $2               ; store lsb
-  lda #>pattern_c
-  sta $3               ; store msb
-  lda #4               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first c pattern
-  lda #5               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second c pattern
-  lda #<pattern_null   ; load the null pattern 
-  sta $2               ; store lsb
-  lda #>pattern_null
-  sta $3               ; store msb
-  lda #6               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first null pattern
-  lda #7               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second null pattern
-  rts                  ; we are done with 6
-
-;;Display the digit 5 on the screen
-dis_5:
-  lda #<pattern_d      ; Load the lsb of pattern d
-  sta $2               ; store lsb
-  lda #>pattern_d      ; Load the msb of pattern d
-  sta $3               ; store msb
-  lda #8               ; Load the current column
-  sta $4               ; store the column
-  jsr dis_pat          ; Jump to the display pattern subroutine.
-  lda #9               ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw pattern d again
-  lda #<pattern_b      ; load pattern B
-  sta $2               ; store lsb
-  lda #>pattern_b
-  sta $3               ; store msb
-  lda #10              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first b pattern
-  lda #11              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second b pattern
-  lda #<pattern_c      ; load pattern c
-  sta $2               ; store lsb
-  lda #>pattern_c
-  sta $3               ; store msb
-  lda #12              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first c pattern
-  lda #13              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second c pattern
-  lda #<pattern_null   ; load the null pattern 
-  sta $2               ; store lsb
-  lda #>pattern_null
-  sta $3               ; store msb
-  lda #14              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first null pattern
-  lda #15              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second null pattern
-  rts                  ; we are done with 5
-
-;;Display the digit 0 on the screen
-dis_0:
-  lda #<pattern_a      ; Load the lsb of pattern a
-  sta $2               ; store lsb
-  lda #>pattern_a      ; Load the msb of pattern a
-  sta $3               ; store msb
-  lda #16              ; Load the current column
-  sta $4               ; store the column
-  jsr dis_pat          ; Jump to the display pattern subroutine.
-  lda #17              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw pattern a again
-  lda #<pattern_e      ; load pattern e
-  sta $2               ; store lsb
-  lda #>pattern_e
-  sta $3               ; store msb
-  lda #18              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first e pattern
-  lda #19              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second e pattern
-  lda #<pattern_a      ; load pattern a
-  sta $2               ; store lsb
+init_font_table:
+  ;;Setup a table in the zero page that contains the string "6502"
+  lda #<pattern_a    ;start with digit 6. It's pattern is aabbcc
+  sta $d0
   lda #>pattern_a
-  sta $3               ; store msb
-  lda #20              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first a pattern
-  lda #21              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second a pattern
-  lda #<pattern_null   ; load the null pattern 
-  sta $2               ; store lsb
-  lda #>pattern_null
-  sta $3               ; store msb
-  lda #22              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first null pattern
-  lda #23              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second null pattern
-  rts                  ; we are done with 0
-
-;;Display the digit 2 on the screen
-dis_2:
-  lda #<pattern_c      ; Load the lsb of pattern c
-  sta $2               ; store lsb
-  lda #>pattern_c      ; Load the msb of pattern c
-  sta $3               ; store msb
-  lda #24              ; Load the current column
-  sta $4               ; store the column
-  jsr dis_pat          ; Jump to the display pattern subroutine.
-  lda #25              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw pattern c again
-  lda #<pattern_b      ; load pattern b
-  sta $2               ; store lsb
+  sta $d1
+  lda #<pattern_b
+  sta $d2
   lda #>pattern_b
-  sta $3               ; store msb
-  lda #26              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first b pattern
-  lda #27              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second b pattern
-  lda #<pattern_d      ; load pattern d
-  sta $2               ; store lsb
+  sta $d3
+  lda #<pattern_c
+  sta $d4
+  lda #>pattern_c
+  sta $d5
+  lda #<pattern_null  ;We want to space everything out with blanks
+  sta $d6
+  lda #>pattern_null
+  sta $d7
+  lda #<pattern_d   ;load memory for digit 5 ddbbcc
+  sta $d8
   lda #>pattern_d
-  sta $3               ; store msb
-  lda #28              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the first d pattern
-  lda #29              ; move to the next column
-  sta $4               ; store the column
-  jsr dis_pat          ; draw the second d pattern
-  rts                  ; we are done with 2
-
+  sta $d9
+  lda #<pattern_b
+  sta $da
+  lda #>pattern_b
+  sta $db
+  lda #<pattern_c
+  sta $dc
+  lda #>pattern_c
+  sta $dd
+  lda #<pattern_null
+  sta $de
+  lda #>pattern_null
+  sta $df
+  lda #<pattern_a   ;load memory for digit 0 aaeeaa
+  sta $e0
+  lda #>pattern_a
+  sta $e1
+  lda #<pattern_e
+  sta $e2
+  lda #>pattern_e
+  sta $e3
+  lda #<pattern_a
+  sta $e4
+  lda #>pattern_a
+  sta $e5
+  lda #<pattern_null
+  sta $e6
+  lda #>pattern_null
+  sta $e7
+  lda #<pattern_c   ;load memory for digit 2 ccbbdd
+  sta $e8
+  lda #>pattern_c
+  sta $e9
+  lda #<pattern_b
+  sta $ea
+  lda #>pattern_b
+  sta $eb
+  lda #<pattern_d
+  sta $ec
+  lda #>pattern_d
+  sta $ed
+  lda #<pattern_null
+  sta $ee
+  lda #>pattern_null
+  sta $ef
+  jmp start
 
 
 ;; Display a pattern on the screen. The pattern to use is 
 ;; stored at $2 and $3. The current column is stored at $4.
 dis_pat:
   ldy $4             ; Load the current column into y
-  lda y_start_pos,y  ; Get the start position for y
+  lda ($9),y         ; Get the start position for y
   tay
   sty $5             ; Store the starting position in memory
   ldy #0             ; We have 12 bits that need to be painted
 dis_pat_loop:
   lda ($2),y         ; get a bit from the pattern
-  beq black          ; is the bit off? if so paint it black
-  lda #1             ; set the foreground to white XXX 
-  jmp white          ; jump past setting the foreground black
-black:
-  lda #0             ; set the foreground to black
-white:
   pha                ; save the color on the stack
   tya                ; move the index into the accumulator
   clc                ; clear the carry 
@@ -219,6 +195,17 @@ white:
   tay                ; The calculated y position
   ldx $4             ; The x position is the current column
   pla                ; pop the color off of the stack
+  beq go_paint       ; black just paint it
+  clc                ; get rid of any carry bit
+  sty $1b            ; save the y coordinate
+  tya
+  clc
+  adc $1c            ; add the color offset
+  and #$7            ; make sure the look up is in range
+  tay                ; move the new index into y so we can look up the color
+  lda color_row,y    ; if not black get the row color
+  ldy $1b            ; restore the y coordinate
+go_paint:
   jsr paint          ; paint the pixel on the screen
   ldy $6             ; get the index out of memory
   iny                ; increment the index
@@ -281,6 +268,25 @@ pattern_null:
 
 ;; Table that store the current start position 
 ;; of each y column.
-y_start_pos:
+y_start_pos1:
   dcb 10,10,9,9,8,8,7,7,6,6,7,7,8,8,9,9,10,10,9,9,8,8,7,7
   dcb 6,6,7,7,8,8
+
+y_start_pos2:
+  dcb 9,9,8,8,8,8,8,8,7,7,8,8,8,8,8,8,9,9,8,8,8,8,8,8
+  dcb 7,7,8,8,8,8
+
+y_start_pos3:
+  dcb 8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8
+  dcb 8,8,8,8,8,8
+
+y_start_pos4:
+  dcb 7,7,8,8,8,8,8,8,9,9,8,8,8,8,8,8,7,7,8,8,8,8,8,8
+  dcb 9,9,8,8,8,8
+
+y_start_pos5:
+  dcb  6, 6,7,7,8,8,9,9,10,10,9,9,8,8,7,7, 6, 6,7,7,8,8,9,9
+  dcb 10,10,9,9,8,8
+
+color_row:
+  dcb $7,$8,$9,$2,$4,$6,$e,$3,$d,$5
