@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT(debug6502, 0.1, jhe@jeremyenglish.org)
+AC_INIT(debug6502, 0.2, jhe@jeremyenglish.org)
 AM_INIT_AUTOMAKE(foreign)
 AC_CONFIG_SRCDIR([src/asm6502.c])
 #AC_CONFIG_HEADER([config.h])
