@@ -1,3 +1,4 @@
+/*-*- indent-tabs-mode:nil -*- */
 /* Copyright (C) 2007 Jeremy English <jhe@jeremyenglish.org>
  * 
  * Permission to use, copy, modify, distribute, and sell this software and its
@@ -1323,15 +1324,24 @@ static BOOL ishexdigit(char c){
   }
 }
 
+/* isCmdChar() - Is this a valid character for a command. All of the
+   command are alpha except for the entry point code that is "*=" */
+static BOOL isCmdChar(char c){
+  return (isalpha(c) || c == '*' || c == '=');
+}
+  
+
 /* command() - parse a command from the source code. We pass along a
    machine so the opcode can be validated. */
 static BOOL command(machine_6502 *machine, char **s, char **cmd){
   int i = 0;
   skipSpace(s);
-  for(;isalpha(**s) && i < MAX_CMD_LEN; (*s)++)
+  for(;isCmdChar(**s) && i < MAX_CMD_LEN; (*s)++)
     (*cmd)[i++] = **s;
   if (i == 0)
     return TRUE; /* Could be a blank line. */
+  else if (strcmp(*cmd,"*=") == 0)
+    return TRUE; /* This is an entry point. */
   else
     return isCommand(machine,*cmd);
 }
@@ -1953,8 +1963,10 @@ static BOOL compileLine(AsmLine *asmline, void *args){
   machine_6502 *machine;
   machine = args;
   if (isBlank(asmline->command)) return TRUE;
-
-  if (strcmp("DCB",asmline->command) == 0){
+  if (strcmp("*=",asmline->command) == 0){
+    machine->defaultCodePC = asmline->param->value[0];
+  }
+  else if (strcmp("DCB",asmline->command) == 0){
     int i;
     for(i = 0; i < asmline->param->vp; i++)
       pushByte(machine, asmline->param->value[i]);
