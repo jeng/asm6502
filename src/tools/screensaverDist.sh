@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# This script file will make a release of the file that I want to send
-# into the xscreensaver project.
+# This script will make a screensaver release that I want to send into
+# the xscreensaver project. Jeremy English 13-January-2008
 
 version=0.2
 basepath=/home/jhe/src/asm6502
