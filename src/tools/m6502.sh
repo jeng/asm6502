@@ -4,14 +4,17 @@ TARGET=$1
 shift
 SRCS=$*
 
-TMP=m6502.h.$$
-rm -f $TMP
+TMP1=m6502.h.1.$$
+TMP2=m6502.h.2.$$
+rm -f $TMP1 $TMP2
 
 if [ -z "$UTILS_SRC" ]; then UTILS_SRC="../utils"; fi
 
 for f in $SRCS ; do
-  sh "$UTILS_SRC/ad2c" "$f" |
-    sed 's/",$/\\n"/' >> $TMP
-  echo ',' >> $TMP
+  sed 's/[     ]*;.*$//' < "$f" > $TMP1  # lose comments
+  sh "$UTILS_SRC/ad2c" $TMP1 |
+    sed 's/",$/\\n"/' >> $TMP2
+  echo ',' >> $TMP2
 done
-mv $TMP $TARGET
+rm $TMP1
+mv $TMP2 $TARGET
