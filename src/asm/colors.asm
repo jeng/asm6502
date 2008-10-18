@@ -1,8 +1,8 @@
-; This one has a bug in it.  submitted by Anonymous
+; submitted by Anonymous
 
- jmp $7000
- *=$7000
- ldx #0
+ jmp $700
+ *=$700
+ ldx #0		
  ldy #0
  ;init screen
  lda #0
