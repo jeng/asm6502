@@ -1692,7 +1692,7 @@ static AsmLine *parseAssembly(machine_6502 *machine, BOOL *codeOk, const char *c
 }
     
 /* fileToBuffer() - Allocates a buffer and loads all of the file into memory. */
-static char *fileToBuffer(char *filename){
+static char *fileToBuffer(const char *filename){
   const int defaultSize = 1024;
   FILE *ifp;
   int c;
@@ -1897,12 +1897,11 @@ static BOOL translate(Opcodes *op,Param *param, machine_6502 *machine){
       else {
 	if (op->BRA) {
 	  pushByte(machine, op->BRA);
-	  if (param->lbladdr < (machine->codeLen + PROG_START))
-	    pushByte(machine,
-		     (0xff - (machine->codeLen-param->lbladdr)) & 0xff);
-	  else
-	    pushByte(machine,
-		     (param->lbladdr - machine->codeLen-1) & 0xff);
+          {
+            int diff = abs(param->lbladdr - machine->defaultCodePC);
+            int backward = (param->lbladdr < machine->defaultCodePC);
+            pushByte(machine, (backward) ? 0xff - diff : diff - 1);
+          }
 	}
 	else {
 	  fprintf(stderr,"%s does not take BRANCH parameters.\n",op->name);
@@ -1993,14 +1992,28 @@ static BOOL compileLine(AsmLine *asmline, void *args){
 static BOOL indexLabels(AsmLine *asmline, void *arg){
   machine_6502 *machine; 
   int thisPC;
+  Bit16 oldDefault;
   machine = arg;
+  oldDefault = machine->defaultCodePC;
   thisPC = machine->regPC;
   /* Figure out how many bytes this instruction takes */
   machine->codeLen = 0;
+
   if ( ! compileLine(asmline, machine) ){
     return FALSE;
   }
-  machine->regPC += machine->codeLen;
+
+  /* If the machine's defaultCodePC has changed then we encountered a
+     *= which changes the load address. We need to initials our code
+     *counter with the current default. */
+  if (oldDefault == machine->defaultCodePC){    
+    machine->regPC += machine->codeLen;
+  }
+  else {
+    machine->regPC = machine->defaultCodePC;
+    oldDefault = machine->defaultCodePC;
+  }
+
   if (asmline->labelDecl) {
     asmline->label->addr = thisPC;
   }
@@ -2040,6 +2053,20 @@ static BOOL compileCode(machine_6502 *machine, const char *code){
       return FALSE;
     /* update label references */
     linkLabels(asmlist);
+
+#if 0 /* prints out some debugging information */
+    {
+      AsmLine *p;
+      if(asmlist != NULL){
+        for (p = asmlist; p != NULL; p = p->next)
+          fprintf(stderr,"%s lbl: %s addr: %d ParamLbl: %s ParamAddr: %d\n",
+                  p->command, p->label->label, p->label->addr,
+                  p->param->label, p->param->lbladdr);
+            }
+    }
+
+#endif    
+
     /* Second pass: translate the instructions */
     machine->codeLen = 0;
     /* Link label call push_byte which increments defaultCodePC.
@@ -2169,7 +2196,7 @@ void disassemble(machine_6502 *machine, FILE *output){
 }
 
 
-void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState){
+void eval_file(machine_6502 *machine, const char *filename, Plotter plot, void *plotterState){
   char *code = NULL;
 
   machine->plot = plot;
@@ -2194,7 +2221,7 @@ void eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotte
   }while(machine->codeRunning);
 }
 
-void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *plotterState){
+void start_eval_file(machine_6502 *machine, const char *filename, Plotter plot, void *plotterState){
   char *code = NULL;
   reset(machine);
 
@@ -2214,7 +2241,7 @@ void start_eval_file(machine_6502 *machine, char *filename, Plotter plot, void *
   execute(machine);
 }
 
-void start_eval_string(machine_6502 *machine, char *code,
+void start_eval_string(machine_6502 *machine, const char *code,
 		       Plotter plot, void *plotterState){
   reset(machine);
 
