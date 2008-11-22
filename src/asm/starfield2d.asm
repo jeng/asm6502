@@ -11,7 +11,15 @@ g:lda $fe
   sta $20,x
   dex
   bpl g
-f:lda #$00
+f:
+  lda #$ff
+  sta $10
+  delay:
+  nop
+  dec $10
+  bne delay
+
+  lda #$00
   sta $80
   lda #$02
   sta $81
