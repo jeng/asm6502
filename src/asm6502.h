@@ -141,12 +141,12 @@ void destroy6502(machine_6502 *machine);
 
 /* eval_file() - Compiles and runs a file until the program is
    finished */
-void eval_file(machine_6502 *machine, char *filename, 
+void eval_file(machine_6502 *machine, const char *filename, 
 	       Plotter plot, void *plotterState);
 
 /* start_eval_file() - Compile the file and execute the first
    instruction */
-void start_eval_file(machine_6502 *machine, char *filename, 
+void start_eval_file(machine_6502 *machine, const char *filename, 
 		     Plotter plot, void *plotterState);
 
 /* XXX
@@ -155,7 +155,7 @@ void start_eval_binary(machine_6502 *machine, Bit8 *program,
 		       Plotter plot, void *plotterState);
 */
 
-void start_eval_string(machine_6502 *machine, char *code,
+void start_eval_string(machine_6502 *machine, const char *code,
 		       Plotter plot, void *plotterState);
 
 /* next_eval() - Execute the next insno of machine instructions */
@@ -176,6 +176,6 @@ void trace(machine_6502 *machine, FILE *output);
 /* save_program() - Writes a binary file of the program loaded in
    memory. */
 /* XXX
-void save_program(machine_6502 *machine, char *filename);
+void save_program(machine_6502 *machine, const char *filename);
 */
 #endif /* __ASM6502_H__ */
