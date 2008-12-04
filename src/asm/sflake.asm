@@ -1,3 +1,6 @@
+;; Jeremy English 01-December-2008
+;; Snowflakes
+
 ;; Main loop Count
 lda #7
 sta $f
@@ -32,7 +35,7 @@ bne initCells
 ldy #115
 lda #1
 sta ($4),y
-	
+   
 ;;Setup offset
 lda #15
 sta $d
@@ -106,28 +109,16 @@ inx
 iny
 jsr paint
 display_continue:
-pla
-tay
 inc $8
 inc $8
-
-pla
-tax
-bne inner_display
-inc $9
-inc $9
-tya
-bne display
 
 ;;Life Cycle
 ;;------------------------------------------------------------
-ldx #248
-lifecycle:
-dex
-txa
-pha
-
+pla
 tay
+pha ;;Store y on the stack
+
+tax
 dey
 lda ($4),y
 iny
@@ -173,16 +164,26 @@ adc ($4),y
 sta $c
 
 pla
-tay
+tay ;;Pull Y off of the stack
 
 lda $c
 and #1
 beq dontset
 sta ($6),y
 dontset:
+   
+pla
+tax ;;Pull x off of the stack   
+beq exit_inner_display
+jmp inner_display
+exit_inner_display:
+inc $9
+inc $9
 tya
-tax
-bne lifecycle
+beq display_exit
+jmp display
+display_exit:
+
 
 ;;Copy Temporary Buffer
 ;;------------------------------------------------------------
@@ -205,35 +206,37 @@ reset_main:
 lda #7
 sta $f
 
-;;init buffer
-
-ldy #248
-initbuf:
-dey
-lda #0
-sta ($6),y
-sta ($4),y
-tya
-bne initbuf
-
-ldy #$ff
+lda #$ff ;;Delay Count
+sta $11
 delay:
+ldy #$a0
+inner_delay:
 nop
 dey
+bne inner_delay
+dec $11
+lda $11
 bne delay
 
-clrscr: 
+;; init buffer
+;; and clear screen
+clrscr:
 lda $fe
 and $f
 cmp #1
 beq clrscr ;We don't want a white background
 ldy #$00
 ldx #$0
-cs_loop:  
+cs_loop: 
 sta $200,x
 sta $300,x
 sta $400,x
 sta $500,x
+pha
+lda #0
+sta ($6),y
+sta ($4),y
+pla
 inx
 dey
 bne cs_loop
@@ -303,7 +306,7 @@ paint:
    sta ($2),y
    rts
 
-       ;; Y cord MSB	
+       ;; Y cord MSB   
 yh:
        dcb $02, $02, $02, $02, $02, $02, $02, $02
        dcb $03, $03, $03, $03, $03, $03, $03, $03
