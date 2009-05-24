@@ -1308,7 +1308,9 @@ static BOOL isCommand(machine_6502 *machine, const char *token){
 /* hasChar() - Check to see if the current line has a certain
    charater */
 static BOOL hasChar(char *s, char c){
-  for(; *s != '\0' && *s != '\n'; s++) {
+  /* If we run into a comment we also consider that the end of the
+     line. */
+  for(; *s != '\0' && *s != '\n' && *s != ';'; s++) {
     if (*s  == c)
       return TRUE;
   }
