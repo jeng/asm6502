@@ -18,7 +18,7 @@ running vcvarsall.bat).  Run the command `build.bat`.
 
 ## Usage
 
-To run the ascii version of the emualtor run `./cmdemu ../asm/matrix.asm` for example
+To run the ascii version of the emulator run `./cmdemu ../asm/matrix.asm` for example
 
 To run the compile and get an output binary file run 
 
