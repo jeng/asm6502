@@ -42,8 +42,9 @@ enum {
   MAX_LABEL_LEN = 80, 
   NUM_OPCODES = 56, /* Number of unique instructions not counting DCB */
   MEM_64K = 65536, /* We have 64k of memory to work with. */
+                        /*TODO get rid of this requirement */
   MAX_PARAM_VALUE = 25, /* The number of values allowed behind dcb */
-  MAX_CMD_LEN = 4, /* Each assembly command is 3 characeters long */
+  MAX_CMD_LEN = 4, /* Each assembly command is 3 characters long */
 /* The stack works from the top down in page $100 to $1ff */
   STACK_TOP = 0x1ff,
   STACK_BOTTOM = 0x100, 
@@ -135,8 +136,7 @@ struct machine_6502 {
 /* build6502() - Creates an instance of the 6502 machine */
 machine_6502 *build6502(void);
 
-/* destroy6502() - compile the file and exectue it until the program
-   is finished */
+/* destroy6502() - Frees all memory associated with the machine */
 void destroy6502(machine_6502 *machine);
 
 /* eval_file() - Compiles and runs a file until the program is
@@ -158,7 +158,7 @@ void start_eval_binary(machine_6502 *machine, Bit8 *program,
 void start_eval_string(machine_6502 *machine, const char *code,
 		       Plotter plot, void *plotterState);
 
-/* next_eval() - Execute the next insno of machine instructions */
+/* next_eval() - Execute the a number of insturctions specified by insno*/
 void next_eval(machine_6502 *machine, int insno);
 
 /* hexDump() - Dumps memory to output */
@@ -175,7 +175,6 @@ void trace(machine_6502 *machine, FILE *output);
 
 /* save_program() - Writes a binary file of the program loaded in
    memory. */
-/* XXX
-void save_program(machine_6502 *machine, const char *filename);
-*/
+void save_program(machine_6502 *machine, const char *filename, BOOL c_output, int pc_start);
+
 #endif /* __ASM6502_H__ */

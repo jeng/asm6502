@@ -17,7 +17,15 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#ifdef __GNUC__
 #include <unistd.h>
+#endif
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <synchapi.h>
+#endif
 
 typedef enum  {
   False = 0,
@@ -44,19 +52,33 @@ void plot(Bit8 x, Bit8 y, Bit8 idx, void *p){
 
 }
 
+void mysleep(float milliseconds){
+#ifdef _WIN32
+      Sleep(milliseconds);
+#else
+      sleep(milliseconds/1000);
+#endif
+}
+
 
 int main(int argc, char **argv){
   machine_6502 *machine = build6502();
-  clearDisplay();
   if (argc == 1)
     fprintf(stderr,"usage: assembler filename");
+  else if (argc == 5 && strncmp(argv[1], "-d", 2) == 0){
+    int pc_start = 0;
+    sscanf(argv[4], "%x", &pc_start);
+    start_eval_file(machine, argv[2], plot, NULL);
+    save_program(machine, argv[3], False, pc_start);
+  }      
   else {
+    clearDisplay();
 #if 1
     start_eval_file(machine,argv[1],plot,NULL);
     
     while (True) {
       next_eval(machine,500);
-      sleep(1);
+        mysleep(1);
       if (!machine->codeRunning) break;
     }
 #else
