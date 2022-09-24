@@ -34,21 +34,43 @@ typedef enum  {
 
 #include "asm6502.h"
 
+#define ESC 0x1b
+
 void clearDisplay() {
-  printf("%c[2J",0x1b);
+  printf("%c[2J",ESC);
 }
 
+//TODO use vtcolors 
 void plot(Bit8 x, Bit8 y, Bit8 idx, void *p){
   char *colorTbl = "* /.-=[]|(&~#$+_";
   char c = *(colorTbl + idx);
   x = x + 1;
   y = y + 1;
-  printf("%c[%dC",0x1b,x);
-  printf("%c[%dB",0x1b,y);
+  printf("\033[%dC",x);
+  printf("\033[%dB",y);
   printf("%c",c);
   /*go back to the origin */
-  printf("%c[%dD",0x1b,x+1);
-  printf("%c[%dA",0x1b,y); 
+  printf("\033[%dD",x+1);
+  printf("\033[%dA",y); 
+
+}
+
+
+//ESC[ 38:5:(n) m Select foreground color
+//ESC[ 48:5:(n) m Select background color
+void plotVT(Bit8 x, Bit8 y, Bit8 idx, void *p){
+  int colorTbl[16] = {0, 15, 88, 87, 129, 83, 19, 227, 216, 94, 131, 236, 243, 114, 32, 252};
+  x = x + 1;
+  y = y + 1;
+  printf("\033[%d;%dH", y, x);
+  printf("\033[48;5;%dm", colorTbl[idx]);
+  //printf("\033[38;5;%dm", colorTbl[idx]);
+  printf(" ");
+  /*move the color back*/
+  //printf("\033[0m");
+  /*go back to the origin */
+  //printf("\033[%dD",x+1);
+  //printf("\033[%dA",y); 
 
 }
 
@@ -68,13 +90,13 @@ int main(int argc, char **argv){
   else if (argc == 5 && strncmp(argv[1], "-d", 2) == 0){
     int pc_start = 0;
     sscanf(argv[4], "%x", &pc_start);
-    start_eval_file(machine, argv[2], plot, NULL);
+    start_eval_file(machine, argv[2], plotVT, NULL);
     save_program(machine, argv[3], False, pc_start);
   }      
   else {
     clearDisplay();
 #if 1
-    start_eval_file(machine,argv[1],plot,NULL);
+    start_eval_file(machine,argv[1],plotVT,NULL);
     
     while (True) {
       next_eval(machine,500);
