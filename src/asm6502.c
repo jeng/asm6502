@@ -32,11 +32,23 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdint.h>
+#ifdef __GNUC__
 #include <unistd.h>
+#endif
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <synchapi.h>
+#endif
 
 #include "asm6502.h"
 
 #ifdef DEBUGGER
+#  define random rand
+#endif
+
+#ifdef _WIN32
 #  define random rand
 #endif
 
@@ -136,7 +148,7 @@ static void *ecalloc(uint32_t nelm, size_t nsize){
   return p;
 }
 
-/* estrdup() - Allocates memory for a new string a returns a copy of the source sting in it. */
+/* estrdup() - Allocates memory for a new string and returns a copy of the source string. */
 static char *estrdup(const char *source){
   int ln = strlen(source) + 1;
   char *s = ecalloc(ln, sizeof(char));
@@ -1027,7 +1039,7 @@ static void jmpSTY(machine_6502 *machine, AddrMode adm){
 static void assignOpCodes(Opcodes *opcodes){
 
  #define SETOP(num, _name, _Imm, _ZP, _ZPX, _ZPY, _ABS, _ABSX, _ABSY, _INDX, _INDY, _SNGL, _BRA, _func) \
-{opcodes[num].name[4] = '\0'; \
+{opcodes[num].name[MAX_CMD_LEN - 1] = '\0'; \
  strncpy(opcodes[num].name, _name, 3); opcodes[num].Imm = _Imm; opcodes[num].ZP = _ZP; \
  opcodes[num].ZPX = _ZPX; opcodes[num].ZPY = _ZPY; opcodes[num].ABS = _ABS; \
  opcodes[num].ABSX = _ABSX; opcodes[num].ABSY = _ABSY; opcodes[num].INDX = _INDX; \
@@ -1771,25 +1783,34 @@ void hexDump(machine_6502 *machine, Bit16 start, Bit16 numbytes, FILE *output){
   fprintf(output,"%s\n",(i&1)?"--":"");
 }
 
-/* XXX */
-/* void save_program(machine_6502 *machine, char *filename){ */
-/*   FILE *ofp; */
-/*   Bit16 pc = PROG_START; */
-/*   Bit16 end = pc + machine->codeLen; */
-/*   Bit16 n; */
-/*   ofp = fopen(filename, "w"); */
-/*   if (ofp == NULL) */
-/*     eprintf("Could not open file."); */
-  
-/*   fprintf(ofp,"Bit8 prog[%d] =\n{",machine->codeLen); */
-/*   n = 1; */
-/*   while(pc < end) */
-/*     fprintf(ofp,"0x%.2x,%s",machine->memory[pc++],n++%10?" ":"\n"); */
-/*   fseek(ofp,-2,SEEK_CUR); */
-/*   fprintf(ofp,"};\n"); */
-  
-/*   fclose(ofp); */
-/* } */
+void save_program(machine_6502 *machine, const char *filename, BOOL c_output, int pc_start){
+  FILE *ofp;
+  Bit16 pc = pc_start;//machine->defaultCodePC;
+  Bit16 end = pc + machine->codeLen;
+  Bit16 n;
+  if (c_output){
+    ofp = fopen(filename, "w");
+    if (ofp == NULL)
+      eprintf("Could not open file: %s", filename);
+
+    fprintf(ofp,"Bit8 prog[%d] =\n{",machine->codeLen);
+    n = 1;
+    while(pc < end)
+      fprintf(ofp,"0x%.2x,%s",machine->memory[pc++],n++%10?" ":"\n");
+    fseek(ofp,-2,SEEK_CUR);
+    fprintf(ofp,"};\n");
+
+    fclose(ofp);
+  }
+  else {
+    ofp = fopen(filename, "wb");
+    if (ofp == NULL)
+      eprintf("Could not open file: %s", filename);
+    while(pc < end)
+      fwrite(&(machine->memory[pc++]), sizeof(Bit8), 1, ofp);
+    fclose(ofp);
+  }
+}
 
 static BOOL translate(Opcodes *op,Param *param, machine_6502 *machine){
    switch(param->type){
@@ -2215,7 +2236,11 @@ void eval_file(machine_6502 *machine, const char *filename, Plotter plot, void *
   machine->defaultCodePC = machine->regPC = PROG_START;
   machine->codeRunning = TRUE;
   do{
+    #ifdef _WIN32
+    Sleep(0);
+    #else
     sleep(0); /* XXX */
+    #endif
 #if 0
     trace(machine);
 #endif
