@@ -305,9 +305,6 @@
     <comp lib="5" loc="(550,70)" name="Hex Digit Display">
       <a name="labelvisible" val="true"/>
     </comp>
-    <comp lib="5" loc="(550,70)" name="Hex Digit Display">
-      <a name="labelvisible" val="true"/>
-    </comp>
     <comp lib="5" loc="(590,70)" name="Hex Digit Display"/>
     <comp lib="6" loc="(1230,420)" name="7421">
       <a name="ShowInternalStructure" val="true"/>
