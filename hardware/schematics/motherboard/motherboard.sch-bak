@@ -1477,8 +1477,6 @@ PH1out
 Text Label 10250 4550 0    50   ~ 0
 PH2out
 Wire Bus Line
-	7850 4950 9000 4950
-Wire Bus Line
 	7850 4950 9500 4950
 Wire Bus Line
 	4050 2450 4050 2800
@@ -1516,4 +1514,14 @@ Wire Bus Line
 	10550 2700 10550 4850
 Wire Bus Line
 	9500 2700 9500 4950
+Text Label 3100 4650 0    50   ~ 0
+RNG
+Text Label 4900 4650 0    50   ~ 0
+RNG
+Text Label 6850 4650 0    50   ~ 0
+RNG
+Text Label 8600 4650 0    50   ~ 0
+RNG
+Text Label 10250 4650 0    50   ~ 0
+RNG
 $EndSCHEMATC

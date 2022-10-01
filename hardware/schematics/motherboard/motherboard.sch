@@ -321,9 +321,9 @@ SCLK
 Text Label 3100 4250 0    50   ~ 0
 FRMBUF
 Text Label 2500 4650 0    50   ~ 0
-RAM
+RAMCS
 Text Label 2500 4750 0    50   ~ 0
-ROM
+ROMCS
 Entry Wire Line
 	2250 2450 2350 2350
 Entry Wire Line
@@ -595,9 +595,9 @@ SCLK
 Text Label 4900 4250 0    50   ~ 0
 FRMBUF
 Text Label 4300 4650 0    50   ~ 0
-RAM
+RAMCS
 Text Label 4300 4750 0    50   ~ 0
-ROM
+ROMCS
 Entry Wire Line
 	4050 2550 4150 2450
 Wire Wire Line
@@ -867,9 +867,9 @@ SCLK
 Text Label 6850 4250 0    50   ~ 0
 FRMBUF
 Text Label 6250 4650 0    50   ~ 0
-RAM
+RAMCS
 Text Label 6250 4750 0    50   ~ 0
-ROM
+ROMCS
 Entry Wire Line
 	6000 2450 6100 2350
 Entry Wire Line
@@ -1141,9 +1141,9 @@ SCLK
 Text Label 8600 4250 0    50   ~ 0
 FRMBUF
 Text Label 8000 4650 0    50   ~ 0
-RAM
+RAMCS
 Text Label 8000 4750 0    50   ~ 0
-ROM
+ROMCS
 Entry Wire Line
 	7750 2450 7850 2350
 Entry Wire Line
@@ -1176,21 +1176,21 @@ IRQ
 Text Label 8600 4350 0    50   ~ 0
 IRQ
 Text Label 6850 4450 0    50   ~ 0
-PH1out
+PHI1out
 Text Label 4900 4450 0    50   ~ 0
-PH1out
+PHI1out
 Text Label 3100 4450 0    50   ~ 0
-PH1out
+PHI1out
 Text Label 8600 4450 0    50   ~ 0
-PH1out
+PHI1out
 Text Label 3100 4550 0    50   ~ 0
-PH2out
+PHI2out
 Text Label 4900 4550 0    50   ~ 0
-PH2out
+PHI2out
 Text Label 6850 4550 0    50   ~ 0
-PH2out
+PHI2out
 Text Label 8600 4550 0    50   ~ 0
-PH2out
+PHI2out
 $Comp
 L Connector_Generic:Conn_02x20_Counter_Clockwise J?
 U 1 1 634FBDD9
@@ -1444,9 +1444,9 @@ SCLK
 Text Label 10250 4250 0    50   ~ 0
 FRMBUF
 Text Label 9650 4650 0    50   ~ 0
-RAM
+RAMCS
 Text Label 9650 4750 0    50   ~ 0
-ROM
+ROMCS
 Entry Wire Line
 	9400 2450 9500 2350
 Entry Wire Line
@@ -1473,9 +1473,9 @@ Wire Bus Line
 Text Label 10250 4350 0    50   ~ 0
 IRQ
 Text Label 10250 4450 0    50   ~ 0
-PH1out
+PHI1out
 Text Label 10250 4550 0    50   ~ 0
-PH2out
+PHI2out
 Wire Bus Line
 	7850 4950 9500 4950
 Wire Bus Line
