@@ -2,7 +2,7 @@
 
   (general
     (thickness 1.6)
-    (drawings 202)
+    (drawings 201)
     (tracks 1100)
     (zones 0)
     (modules 12)
@@ -1059,9 +1059,6 @@
     )
   )
 
-  (gr_text "M6502 Backplane jhe@jeremyenglish.org" (at 227.33 31.75) (layer F.SilkS)
-    (effects (font (size 1 1) (thickness 0.15)))
-  )
   (gr_line (start 29.21 121.92) (end 29.21 27.94) (layer Edge.Cuts) (width 0.05) (tstamp 633A84AF))
   (gr_line (start 245.11 121.92) (end 29.21 121.92) (layer Edge.Cuts) (width 0.05))
   (gr_line (start 245.11 27.94) (end 245.11 121.92) (layer Edge.Cuts) (width 0.05))

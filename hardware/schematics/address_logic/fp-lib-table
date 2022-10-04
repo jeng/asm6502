@@ -1,0 +1,4 @@
+(fp_lib_table
+  (lib (name address_logic)(type KiCad)(uri C:/Users/Jeremy/src/asm6502/hardware/schematics/address_logic.pretty)(options "")(descr ""))
+  (lib (name m6502)(type KiCad)(uri ${KIPRJMOD}/m6502.pretty)(options "")(descr ""))
+)
