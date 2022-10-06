@@ -1,0 +1,80 @@
+
+(rules PCB memory
+  (snap_angle 
+    fortyfive_degree
+  )
+  (autoroute_settings
+    (fanout off)
+    (autoroute on)
+    (postroute on)
+    (vias on)
+    (via_costs 50)
+    (plane_via_costs 5)
+    (start_ripup_costs 100)
+    (start_pass_no 6)
+    (layer_rule F.Cu
+      (active on)
+      (preferred_direction horizontal)
+      (preferred_direction_trace_costs 1.0)
+      (against_preferred_direction_trace_costs 2.3)
+    )
+    (layer_rule B.Cu
+      (active on)
+      (preferred_direction vertical)
+      (preferred_direction_trace_costs 1.0)
+      (against_preferred_direction_trace_costs 1.8)
+    )
+  )
+  (rule
+    (width 250.0)
+    (clear 200.0)
+    (clear 125.0 (type smd_to_turn_gap))
+    (clear 50.0 (type smd-smd))
+  )
+  (padstack "Via[0-1]_800:400_um"
+    (shape
+      (circle F.Cu 800.0 0.0 0.0)
+    )
+    (shape
+      (circle B.Cu 800.0 0.0 0.0)
+    )
+    (attach off)
+  )
+  (via 
+    "Via[0-1]_800:400_um" "Via[0-1]_800:400_um" default
+  )
+  (via 
+    "Via[0-1]_800:400_um-kicad_default" "Via[0-1]_800:400_um" "kicad_default"
+  )
+  (via_rule
+    default "Via[0-1]_800:400_um"
+  )
+  (via_rule
+    "kicad_default" "Via[0-1]_800:400_um-kicad_default"
+  )
+  (class default
+    (clearance_class default)
+    (via_rule default)
+    (rule
+      (width 250.0)
+    )
+    (circuit 
+      (use_layer F.Cu B.Cu)
+    )
+  )
+  (class "kicad_default"
+    GND +5V /A14 "Net-(J1-Pad21)" /ROMCS "Net-(J1-Pad22)" /RAMCS "Net-(J1-Pad23)"
+    "Net-(J1-Pad18)" "Net-(J1-Pad24)" "Net-(J1-Pad25)" /A13 "Net-(J1-Pad26)" /A12 "Net-(J1-Pad27)" /A11
+    "Net-(J1-Pad28)" /A10 "Net-(J1-Pad29)" /A9 /RW /A8 /D7 /A7
+    /D6 /A6 /D5 /A5 /D4 /A4 /D3 /A3
+    /D2 /A2 /D1 /A1 /D0 /A0 "Net-(J1-Pad2)"
+    (clearance_class "kicad_default")
+    (via_rule "kicad_default")
+    (rule
+      (width 250.0)
+    )
+    (circuit 
+      (use_layer F.Cu B.Cu)
+    )
+  )
+)

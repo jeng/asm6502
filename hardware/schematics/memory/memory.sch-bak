@@ -4,20 +4,20 @@ EELAYER END
 $Descr USLetter 11000 8500
 encoding utf-8
 Sheet 1 1
-Title ""
-Date ""
-Rev ""
-Comp ""
-Comment1 ""
+Title "M6502 Memory Card"
+Date "2022-10-01"
+Rev "1"
+Comp "Jeremy English jhe@jeremyenglish.org"
+Comment1 "Hardware version of the 6502 XScreenSaver Module"
 Comment2 ""
 Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L 28c256:28C256 U?
+L 28c256:28C256 U1
 U 1 1 63387EE1
 P 5350 3500
-F 0 "U?" H 5350 4731 50  0000 C CNN
+F 0 "U1" H 5350 4731 50  0000 C CNN
 F 1 "28C256" H 5350 4640 50  0000 C CNN
 F 2 "" H 5350 3500 50  0001 C CNN
 F 3 "memory/28c256.pdf" H 5350 3500 50  0001 C CNN
@@ -25,10 +25,10 @@ F 3 "memory/28c256.pdf" H 5350 3500 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Memory_RAM:HM62256BLP U?
+L Memory_RAM:HM62256BLP U2
 U 1 1 6338947A
 P 8200 3500
-F 0 "U?" H 8200 4581 50  0000 C CNN
+F 0 "U2" H 8200 4581 50  0000 C CNN
 F 1 "HM62256BLP" H 8200 4490 50  0000 C CNN
 F 2 "Package_DIP:DIP-28_W15.24mm" H 8200 3400 50  0001 C CNN
 F 3 "https://web.mit.edu/6.115/www/document/62256.pdf" H 8200 3400 50  0001 C CNN
@@ -36,11 +36,11 @@ F 3 "https://web.mit.edu/6.115/www/document/62256.pdf" H 8200 3400 50  0001 C CN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Connector_Generic:Conn_02x20_Counter_Clockwise J?
+L Connector_Generic:Conn_02x20_Counter_Clockwise J1
 U 1 1 63389FA6
 P 2100 3350
-F 0 "J?" H 2150 4467 50  0000 C CNN
-F 1 "Conn_02x20_Counter_Clockwise" H 2150 4376 50  0000 C CNN
+F 0 "J1" H 2100 2200 50  0000 C CNN
+F 1 "Conn_02x20_Counter_Clockwise" H 2100 2100 50  0000 C CNN
 F 2 "" H 2100 3350 50  0001 C CNN
 F 3 "~" H 2100 3350 50  0001 C CNN
 	1    2100 3350
@@ -58,8 +58,6 @@ Entry Bus Bus
 	9600 4900 9700 5000
 Entry Wire Line
 	1250 2350 1350 2450
-Entry Wire Line
-	1250 2450 1350 2550
 Entry Wire Line
 	1250 2550 1350 2650
 Entry Wire Line
@@ -91,15 +89,11 @@ Entry Wire Line
 Entry Wire Line
 	1250 3950 1350 4050
 Entry Wire Line
-	1250 4050 1350 4150
-Entry Wire Line
 	1250 4150 1350 4250
 Entry Wire Line
 	1250 4250 1350 4350
 Wire Wire Line
 	1350 2450 1900 2450
-Wire Wire Line
-	1350 2550 1900 2550
 Wire Wire Line
 	1350 2650 1900 2650
 Wire Wire Line
@@ -131,19 +125,17 @@ Wire Wire Line
 Wire Wire Line
 	1350 4050 1900 4050
 Wire Wire Line
-	1350 4150 1900 4150
-Wire Wire Line
 	1350 4250 1900 4250
 Wire Wire Line
 	1350 4350 1900 4350
 Entry Wire Line
 	3250 2450 3350 2350
 Wire Wire Line
-	2400 2450 3250 2450
+	2400 2450 2950 2450
 Entry Wire Line
 	3250 2550 3350 2450
 Wire Wire Line
-	2400 2550 3250 2550
+	2400 2550 2800 2550
 Entry Wire Line
 	3250 2650 3350 2550
 Wire Wire Line
@@ -180,42 +172,6 @@ Entry Wire Line
 	3250 3450 3350 3350
 Wire Wire Line
 	2400 3450 3250 3450
-Entry Wire Line
-	3250 3550 3350 3450
-Wire Wire Line
-	2400 3550 3250 3550
-Entry Wire Line
-	3250 3650 3350 3550
-Wire Wire Line
-	2400 3650 3250 3650
-Entry Wire Line
-	3250 3750 3350 3650
-Wire Wire Line
-	2400 3750 3250 3750
-Entry Wire Line
-	3250 3850 3350 3750
-Wire Wire Line
-	2400 3850 3250 3850
-Entry Wire Line
-	3250 3950 3350 3850
-Wire Wire Line
-	2400 3950 3250 3950
-Entry Wire Line
-	3250 4050 3350 3950
-Wire Wire Line
-	2400 4050 3250 4050
-Entry Wire Line
-	3250 4150 3350 4050
-Wire Wire Line
-	2400 4150 3250 4150
-Entry Wire Line
-	3250 4250 3350 4150
-Wire Wire Line
-	2400 4250 3250 4250
-Entry Wire Line
-	3250 4350 3350 4250
-Wire Wire Line
-	2400 4350 3250 4350
 Text Label 1450 2450 0    50   ~ 0
 GND
 Text Label 1450 2550 0    50   ~ 0
@@ -643,10 +599,10 @@ Wire Wire Line
 Text Label 7300 2600 0    50   ~ 0
 VCC
 $Comp
-L Device:C C?
+L Device:C C1
 U 1 1 63501102
 P 4550 4700
-F 0 "C?" V 4298 4700 50  0000 C CNN
+F 0 "C1" V 4298 4700 50  0000 C CNN
 F 1 "0.1uF" V 4389 4700 50  0000 C CNN
 F 2 "" H 4588 4550 50  0001 C CNN
 F 3 "~" H 4550 4700 50  0001 C CNN
@@ -668,10 +624,10 @@ Connection ~ 4850 4550
 Wire Wire Line
 	4850 4550 5350 4550
 $Comp
-L Device:C C?
+L Device:C C2
 U 1 1 6350C827
 P 7650 4750
-F 0 "C?" V 7398 4750 50  0000 C CNN
+F 0 "C2" V 7398 4750 50  0000 C CNN
 F 1 "C" V 7489 4750 50  0000 C CNN
 F 2 "" H 7688 4600 50  0001 C CNN
 F 3 "~" H 7650 4750 50  0001 C CNN
@@ -690,8 +646,63 @@ Wire Wire Line
 Connection ~ 7800 4550
 Wire Wire Line
 	7800 4550 8850 4550
+$Comp
+L power:PWR_FLAG #FLG?
+U 1 1 633C0D61
+P 2950 2450
+F 0 "#FLG?" H 2950 2525 50  0001 C CNN
+F 1 "PWR_FLAG" H 2700 2550 50  0000 C CNN
+F 2 "" H 2950 2450 50  0001 C CNN
+F 3 "~" H 2950 2450 50  0001 C CNN
+	1    2950 2450
+	1    0    0    -1  
+$EndComp
+Connection ~ 2950 2450
+Wire Wire Line
+	2950 2450 3100 2450
+$Comp
+L power:GND #PWR?
+U 1 1 633C1330
+P 3100 2450
+F 0 "#PWR?" H 3100 2200 50  0001 C CNN
+F 1 "GND" H 3000 2350 50  0000 C CNN
+F 2 "" H 3100 2450 50  0001 C CNN
+F 3 "" H 3100 2450 50  0001 C CNN
+	1    3100 2450
+	-1   0    0    1   
+$EndComp
+Connection ~ 3100 2450
+Wire Wire Line
+	3100 2450 3250 2450
+$Comp
+L power:+5V #PWR?
+U 1 1 633C1B8D
+P 2750 2550
+F 0 "#PWR?" H 2750 2400 50  0001 C CNN
+F 1 "+5V" H 2750 2500 50  0000 C CNN
+F 2 "" H 2750 2550 50  0001 C CNN
+F 3 "" H 2750 2550 50  0001 C CNN
+	1    2750 2550
+	1    0    0    -1  
+$EndComp
+Connection ~ 2750 2550
+Wire Wire Line
+	2800 2550 2850 2550
+NoConn ~ 2400 3550
+NoConn ~ 2400 3650
+NoConn ~ 2400 3750
+NoConn ~ 2400 3850
+NoConn ~ 2400 3950
+NoConn ~ 2400 4050
+NoConn ~ 2400 4150
+NoConn ~ 2400 4250
+NoConn ~ 2400 4350
+NoConn ~ 1900 4150
+NoConn ~ 1900 2550
 Wire Bus Line
 	1250 5000 9700 5000
+Wire Bus Line
+	3350 2300 3350 4900
 Wire Bus Line
 	6800 2250 6800 4900
 Wire Bus Line
@@ -699,9 +710,21 @@ Wire Bus Line
 Wire Bus Line
 	7100 2200 7100 4900
 Wire Bus Line
-	3350 2300 3350 4900
-Wire Bus Line
 	1250 2300 1250 5000
 Wire Bus Line
 	3750 2250 3750 4900
+$Comp
+L power:PWR_FLAG #FLG?
+U 1 1 6340AEA7
+P 2850 2550
+F 0 "#FLG?" H 2850 2625 50  0001 C CNN
+F 1 "PWR_FLAG" H 3050 2500 50  0000 C CNN
+F 2 "" H 2850 2550 50  0001 C CNN
+F 3 "~" H 2850 2550 50  0001 C CNN
+	1    2850 2550
+	1    0    0    -1  
+$EndComp
+Connection ~ 2850 2550
+Wire Wire Line
+	2850 2550 3250 2550
 $EndSCHEMATC
